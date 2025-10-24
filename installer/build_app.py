@@ -90,14 +90,14 @@ def build_main_app():
         if result.returncode == 0:
             exe_path = dist_dir / "LookAway.exe"
             if exe_path.exists():
-                print(f"✅ Successfully built: {exe_path}")
+                print(f"SUCCESS: Successfully built: {exe_path}")
                 print(f"File size: {exe_path.stat().st_size / 1024 / 1024:.2f} MB")
                 return True
             else:
-                print("❌ Build completed but exe file not found!")
+                print("ERROR: Build completed but exe file not found!")
                 return False
         else:
-            print("❌ PyInstaller failed!")
+            print("ERROR: PyInstaller failed!")
             print("STDOUT:", result.stdout)
             print("STDERR:", result.stderr)
             return False
@@ -123,18 +123,18 @@ def test_exe():
                               capture_output=True, text=True, timeout=10)
         
         if result.returncode == 0:
-            print("✅ LookAway.exe responds to --help")
+            print("SUCCESS: LookAway.exe responds to --help")
             return True
         else:
-            print(f"❌ LookAway.exe test failed (exit code: {result.returncode})")
+            print(f"ERROR: LookAway.exe test failed (exit code: {result.returncode})")
             print("STDERR:", result.stderr)
             return False
             
     except subprocess.TimeoutExpired:
-        print("❌ LookAway.exe test timed out")
+        print("ERROR: LookAway.exe test timed out")
         return False
     except Exception as e:
-        print(f"❌ Error testing LookAway.exe: {e}")
+        print(f"ERROR: Error testing LookAway.exe: {e}")
         return False
 
 def main():
@@ -147,7 +147,7 @@ def main():
     try:
         subprocess.run([sys.executable, '-m', 'PyInstaller', '--version'], 
                       capture_output=True, check=True)
-        print("✅ PyInstaller is available")
+        print("SUCCESS: PyInstaller is available")
     except subprocess.CalledProcessError:
         print("❌ PyInstaller not found! Installing...")
         subprocess.run([sys.executable, '-m', 'pip', 'install', 'pyinstaller'], check=True)
@@ -159,20 +159,20 @@ def main():
         print("=" * 60)
         
         if test_exe():
-            print("\n✅ Build completed successfully!")
+            print("\nSUCCESS: Build completed successfully!")
             project_root = Path(__file__).parent.parent
             exe_path = project_root / "dist" / "LookAway.exe"
-            print(f"📁 Executable location: {exe_path}")
+            print(f"Executable location: {exe_path}")
             
             # Show architecture info
-            print(f"\n🔍 System architecture: {os.environ.get('PROCESSOR_ARCHITECTURE', 'Unknown')}")
-            print(f"🐍 Python architecture: {sys.maxsize > 2**32 and '64-bit' or '32-bit'}")
+            print(f"\nSystem architecture: {os.environ.get('PROCESSOR_ARCHITECTURE', 'Unknown')}")
+            print(f"Python architecture: {sys.maxsize > 2**32 and '64-bit' or '32-bit'}")
             
         else:
-            print("\n❌ Build completed but executable test failed!")
+            print("\nERROR: Build completed but executable test failed!")
             return False
     else:
-        print("\n❌ Build failed!")
+        print("\nERROR: Build failed!")
         return False
     
     return True

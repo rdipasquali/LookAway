@@ -286,14 +286,33 @@ Click Next to continue with the installation."""
         license_check.pack(anchor=tk.W)
     
     def get_license_text(self):
-        """Get the license text"""
-        try:
-            with open(self.get_resource_path("LICENSE"), 'r', encoding='utf-8') as f:
-                return f.read()
-        except:
-            return """MIT License
+        """Get the license text from the actual LICENSE file"""
+        # Try multiple paths to find the LICENSE file
+        license_paths = [
+            # For development - LICENSE is in parent directory
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "LICENSE"),
+            # For PyInstaller - if LICENSE is bundled
+            self.get_resource_path("LICENSE"),
+            # Current directory fallback
+            "LICENSE"
+        ]
+        
+        for license_path in license_paths:
+            try:
+                if os.path.exists(license_path):
+                    with open(license_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        print(f"DEBUG: Successfully loaded LICENSE from {license_path}")
+                        return content
+            except Exception as e:
+                print(f"DEBUG: Failed to read LICENSE from {license_path}: {e}")
+                continue
+        
+        # Fallback to the actual LICENSE content (matching the real file)
+        print("DEBUG: Using fallback LICENSE text")
+        return """MIT License
 
-Copyright (c) 2025 LookAway
+Copyright (c) 2025 rdipasquali
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -489,62 +508,81 @@ SOFTWARE."""
     # Email Configuration Page (shown if email notifications enabled)
     def create_email_config_page(self):
         print("DEBUG: Creating email configuration page")
-        email_frame = ttk.Frame(self.main_frame)
-        email_frame.pack(fill=tk.BOTH, expand=True)
         
-        title_label = ttk.Label(email_frame, text="Email Notification Setup", 
+        # Create scrollable frame if needed
+        main_container = ttk.Frame(self.main_frame)
+        main_container.pack(fill=tk.BOTH, expand=True)
+        
+        # Use canvas for scrolling if content is too tall
+        canvas = tk.Canvas(main_container, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(main_container, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Title
+        title_label = ttk.Label(scrollable_frame, text="Email Notification Setup", 
                                font=('Arial', 14, 'bold'))
-        title_label.pack(pady=(0, 20))
+        title_label.pack(pady=(0, 10))
         
-        ttk.Label(email_frame, text="Configure your email settings for notifications:", 
-                 font=('Arial', 10)).pack(pady=(0, 15))
+        # Compact form layout
+        form_frame = ttk.Frame(scrollable_frame)
+        form_frame.pack(fill=tk.X, padx=20, pady=10)
         
-        # Email server settings
-        server_frame = ttk.LabelFrame(email_frame, text="Email Server Settings", padding="15")
-        server_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        # SMTP Server
-        ttk.Label(server_frame, text="SMTP Server:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        # SMTP Server (row 0)
+        ttk.Label(form_frame, text="SMTP Server:").grid(row=0, column=0, sticky=tk.W, pady=3)
         self.smtp_server_var = tk.StringVar(value="smtp.gmail.com")
-        smtp_entry = ttk.Entry(server_frame, textvariable=self.smtp_server_var, width=30)
-        smtp_entry.grid(row=0, column=1, sticky=tk.W, padx=(10, 0), pady=5)
+        smtp_entry = ttk.Entry(form_frame, textvariable=self.smtp_server_var, width=25)
+        smtp_entry.grid(row=0, column=1, sticky=tk.W, padx=(10, 0), pady=3)
         
-        # SMTP Port
-        ttk.Label(server_frame, text="SMTP Port:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        # SMTP Port (row 1)
+        ttk.Label(form_frame, text="SMTP Port:").grid(row=1, column=0, sticky=tk.W, pady=3)
         self.smtp_port_var = tk.StringVar(value="587")
-        port_entry = ttk.Entry(server_frame, textvariable=self.smtp_port_var, width=10)
-        port_entry.grid(row=1, column=1, sticky=tk.W, padx=(10, 0), pady=5)
+        port_entry = ttk.Entry(form_frame, textvariable=self.smtp_port_var, width=8)
+        port_entry.grid(row=1, column=1, sticky=tk.W, padx=(10, 0), pady=3)
         
-        # Account settings
-        account_frame = ttk.LabelFrame(email_frame, text="Account Settings", padding="15")
-        account_frame.pack(fill=tk.X, pady=(0, 10))
+        # Separator
+        separator = ttk.Separator(form_frame, orient='horizontal')
+        separator.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=8)
         
-        # Email address
-        ttk.Label(account_frame, text="Your Email:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        # Email address (row 3)
+        ttk.Label(form_frame, text="Your Email:").grid(row=3, column=0, sticky=tk.W, pady=3)
         self.email_address_var = tk.StringVar()
-        email_entry = ttk.Entry(account_frame, textvariable=self.email_address_var, width=30)
-        email_entry.grid(row=0, column=1, sticky=tk.W, padx=(10, 0), pady=5)
+        email_entry = ttk.Entry(form_frame, textvariable=self.email_address_var, width=25)
+        email_entry.grid(row=3, column=1, sticky=tk.W, padx=(10, 0), pady=3)
         
-        # Password
-        ttk.Label(account_frame, text="Password/App Password:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        # Password (row 4)
+        ttk.Label(form_frame, text="Password/App Password:").grid(row=4, column=0, sticky=tk.W, pady=3)
         self.email_password_var = tk.StringVar()
-        password_entry = ttk.Entry(account_frame, textvariable=self.email_password_var, width=30, show="*")
-        password_entry.grid(row=1, column=1, sticky=tk.W, padx=(10, 0), pady=5)
+        password_entry = ttk.Entry(form_frame, textvariable=self.email_password_var, width=25, show="*")
+        password_entry.grid(row=4, column=1, sticky=tk.W, padx=(10, 0), pady=3)
         
-        # Recipient
-        ttk.Label(account_frame, text="Notification Recipient:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        # Recipient (row 5)
+        ttk.Label(form_frame, text="Recipient Email:").grid(row=5, column=0, sticky=tk.W, pady=3)
         self.email_recipient_var = tk.StringVar()
-        recipient_entry = ttk.Entry(account_frame, textvariable=self.email_recipient_var, width=30)
-        recipient_entry.grid(row=2, column=1, sticky=tk.W, padx=(10, 0), pady=5)
+        recipient_entry = ttk.Entry(form_frame, textvariable=self.email_recipient_var, width=25)
+        recipient_entry.grid(row=5, column=1, sticky=tk.W, padx=(10, 0), pady=3)
         
-        # Help text
-        help_frame = ttk.Frame(email_frame)
-        help_frame.pack(fill=tk.X, pady=(10, 0))
+        # Help text in a compact frame
+        help_frame = ttk.LabelFrame(scrollable_frame, text="💡 Gmail Setup Tip", padding="10")
+        help_frame.pack(fill=tk.X, padx=20, pady=(10, 5))
         
         help_text = ttk.Label(help_frame, 
-                             text="💡 For Gmail, use an App Password instead of your regular password.\nYou can generate one in your Google Account settings.",
-                             font=('Arial', 9), foreground='blue')
-        help_text.pack(pady=5)
+                             text="Use an App Password for Gmail (not your regular password).\nGenerate one in Google Account → Security → 2-Step Verification → App passwords",
+                             font=('Arial', 8), justify=tk.LEFT)
+        help_text.pack()
+        
+        # Configure column weights for proper resizing
+        form_frame.columnconfigure(1, weight=1)
     
     # Telegram Configuration Page (shown if telegram notifications enabled)
     def create_telegram_config_page(self):
