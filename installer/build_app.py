@@ -79,6 +79,7 @@ def build_main_app():
         '--hidden-import=signal',       # Signal handling
         '--hidden-import=argparse',     # Argument parsing
         '--hidden-import=random',       # Random numbers
+        '--hidden-import=traceback',    # Exception tracebacks
         '--collect-all=pystray',        # Collect all pystray dependencies
         '--collect-all=plyer',          # Collect all plyer dependencies
         '--collect-all=telegram',       # Collect all telegram dependencies

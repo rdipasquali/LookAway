@@ -15,6 +15,16 @@ try:
 except ImportError:
     TELEGRAM_AVAILABLE = False
 
+# Import exception handler functions
+try:
+    from exception_handler import log_exception, log_critical_error
+except ImportError:
+    # Fallback if exception handler is not available
+    def log_exception(exc_info=None, context=""):
+        pass
+    def log_critical_error(message, exc_info=None):
+        pass
+
 
 class NotificationHandler(ABC):
     """Abstract base class for notification handlers."""
@@ -57,7 +67,9 @@ class DesktopNotificationHandler(NotificationHandler):
                 )
             return True
         except Exception as e:
+            log_critical_error(f"Desktop notification FAILED: {str(e)}", exc_info=True)
             logging.error(f"Desktop notification failed: {e}")
+            log_exception(context="Desktop notification")
             return False
     
     def test_connection(self) -> bool:
@@ -111,6 +123,7 @@ Take care of your eyes! 👀
             
         except Exception as e:
             logging.error(f"Email notification failed: {e}")
+            log_exception(context="Email notification")
             return False
     
     def test_connection(self) -> bool:
@@ -131,34 +144,105 @@ class TelegramNotificationHandler(NotificationHandler):
     
     def send_notification(self, title: str, message: str) -> bool:
         """Send a Telegram notification."""
-        if not TELEGRAM_AVAILABLE:
-            logging.error("Telegram library not available")
-            return False
-            
-        if not all([self.bot_token, self.chat_id]):
-            logging.error("Telegram configuration incomplete")
-            return False
-        
         try:
-            full_message = f"🔔 *{title}*\n\n{message}\n\n_Take care of your eyes!_ 👀"
-            
-            # Use asyncio to run the async method
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(
-                    self.bot.send_message(
-                        chat_id=self.chat_id,
-                        text=full_message,
-                        parse_mode='Markdown'
-                    )
-                )
-                return True
-            finally:
-                loop.close()
+            if not TELEGRAM_AVAILABLE:
+                logging.error("Telegram library not available")
+                return False
                 
-        except Exception as e:
-            logging.error(f"Telegram notification failed: {e}")
+            if not all([self.bot_token, self.chat_id]):
+                logging.error("Telegram configuration incomplete")
+                return False
+            
+            if not self.bot:
+                logging.error("Telegram bot not initialized")
+                return False
+            
+            try:
+                full_message = f"🔔 *{title}*\n\n{message}\n\n_Take care of your eyes!_ 👀"
+                
+                # Improved asyncio handling for .exe environment
+                
+                # Use a more isolated approach for .exe compatibility
+                import threading
+                import queue
+                
+                result_queue = queue.Queue()
+                exception_queue = queue.Queue()
+                
+                def telegram_thread():
+                    """Run Telegram operation in separate thread with its own event loop."""
+                    try:
+                        # Create a completely fresh event loop for this thread
+                        new_loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(new_loop)
+                        
+                        try:
+                            # Send the message in the new loop
+                            new_loop.run_until_complete(
+                                self.bot.send_message(
+                                    chat_id=self.chat_id,
+                                    text=full_message,
+                                    parse_mode='Markdown'
+                                )
+                            )
+                            result_queue.put(True)
+                            
+                        finally:
+                            # Properly close the loop and all its resources
+                            try:
+                                # Cancel all running tasks
+                                pending = asyncio.all_tasks(new_loop)
+                                if pending:
+                                    for task in pending:
+                                        task.cancel()
+                                    # Wait for cancellation to complete
+                                    new_loop.run_until_complete(
+                                        asyncio.gather(*pending, return_exceptions=True)
+                                    )
+                                
+                                # Close the loop
+                                new_loop.close()
+                            except Exception as cleanup_error:
+                                pass  # Ignore cleanup errors
+                            
+                    except Exception as thread_error:
+                        exception_queue.put(thread_error)
+                        result_queue.put(False)
+                
+                # Start the thread
+                telegram_thread_obj = threading.Thread(target=telegram_thread, daemon=True)
+                telegram_thread_obj.start()
+                
+                # Wait for completion with timeout
+                telegram_thread_obj.join(timeout=30)  # 30 second timeout
+                
+                # Check results
+                if telegram_thread_obj.is_alive():
+                    logging.error("Telegram thread timed out")
+                    return False
+                
+                if not exception_queue.empty():
+                    thread_exception = exception_queue.get()
+                    log_critical_error(f"Telegram thread exception: {str(thread_exception)}", exc_info=True)
+                    raise thread_exception
+                
+                success = result_queue.get() if not result_queue.empty() else False
+                return success
+                        
+            except TelegramError as telegram_error:
+                log_critical_error(f"Telegram API error: {str(telegram_error)}", exc_info=True)
+                logging.error(f"Telegram API error: {telegram_error}")
+                return False
+                
+            except Exception as send_error:
+                log_critical_error(f"Telegram send error: {str(send_error)}", exc_info=True)
+                logging.error(f"Telegram notification failed: {send_error}")
+                return False
+                
+        except Exception as outer_error:
+            log_critical_error(f"Telegram notification outer exception: {str(outer_error)}", exc_info=True)
+            logging.error(f"Telegram notification failed: {outer_error}")
+            log_exception(context="Telegram notification outer")
             return False
     
     def test_connection(self) -> bool:
@@ -208,6 +292,7 @@ class NotificationManager:
                     logging.warning(f"Notification failed via {name}")
             except Exception as e:
                 logging.error(f"Error sending notification via {name}: {e}")
+                log_exception(context=f"Notification via {name}")
                 results[name] = False
         
         return results
@@ -221,6 +306,7 @@ class NotificationManager:
                 results[name] = handler.test_connection()
             except Exception as e:
                 logging.error(f"Error testing {name} connection: {e}")
+                log_exception(context=f"Testing {name} connection")
                 results[name] = False
         
         return results

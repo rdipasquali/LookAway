@@ -8,17 +8,41 @@ Handles application startup, system tray integration, and service management.
 
 import sys
 import os
-import logging
-import signal
-import argparse
+import traceback
 from pathlib import Path
+from datetime import datetime
 
-# Add src directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+try:
+    # Add src directory to path for imports FIRST
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from config_manager import ConfigManager
-from scheduler import EyeBreakScheduler, TrayController
-from setup import SetupWizard
+    # Initialize exception handling as early as possible
+    from exception_handler import initialize_exception_handler, log_critical_error, cleanup_exception_handler, flush_exception_logs
+    
+    # Create a basic exception handler immediately
+    _early_exception_handler = initialize_exception_handler(enabled=True)
+    print("Early exception handling initialized")
+    flush_exception_logs()
+    
+except Exception as e:
+    log_critical_error(f"EARLY EXCEPTION TRACEBACK:\n{traceback.format_exc()}")
+    print(f"Warning: Could not initialize early exception handling: {e}")
+
+# Now import other modules
+try:
+    import logging
+    import signal
+    import argparse
+
+    from config_manager import ConfigManager
+    from scheduler import EyeBreakScheduler, TrayController
+    from setup import SetupWizard
+
+except Exception as e:
+    log_critical_error(f"MODULE IMPORT EXCEPTION: {str(e)}")
+    log_critical_error(f"MODULE IMPORT TRACEBACK:\n{traceback.format_exc()}")
+    print(f"Critical Error: Failed to import required modules: {e}")
+    sys.exit(1)
 
 
 class LookAwayApp:
@@ -28,10 +52,49 @@ class LookAwayApp:
         self.config_manager = ConfigManager()
         self.scheduler = None
         self.tray_controller = None
+        self.exception_handler = None
+        
+        # Setup exception handling first
+        self._setup_exception_handling()
         
         # Setup logging
         self._setup_logging()
         self.logger = logging.getLogger(__name__)
+    
+    def _setup_exception_handling(self):
+        """Setup centralized exception handling."""
+        try:
+            # Try to load config, but use defaults if it fails
+            exception_logging_enabled = True
+            log_directory = 'logs'
+            
+            try:
+                config = self.config_manager.load_config()
+                logging_config = config.get('logging', {})
+                exception_logging_enabled = logging_config.get('exception_logging', True)
+                log_directory = logging_config.get('log_directory', 'logs')
+            except Exception as config_error:
+                print(f"Warning: Could not load config for exception handling, using defaults: {config_error}")
+            
+            # Convert relative path to absolute
+            if not os.path.isabs(log_directory):
+                log_directory = os.path.join(os.path.dirname(__file__), log_directory)
+            
+            # Re-initialize exception handler with proper configuration
+            # (The early handler might use defaults)
+            self.exception_handler = initialize_exception_handler(
+                enabled=exception_logging_enabled,
+                log_dir=Path(log_directory)
+            )
+            
+            if exception_logging_enabled:
+                print(f"Exception logging configured - logs will be written to: {log_directory}")
+            else:
+                print("Exception logging disabled by configuration")
+                
+        except Exception as e:
+            print(f"Warning: Failed to setup configured exception handling: {e}")
+            # Continue with the early exception handler if it exists
     
     def _setup_logging(self):
         """Setup application logging."""
@@ -87,10 +150,12 @@ class LookAwayApp:
             return True
         except Exception as e:
             self.logger.error(f"Error starting service: {e}")
+            log_critical_error(f"Failed to start LookAway service: {str(e)}", exc_info=True)
             return False
         finally:
             if self.scheduler:
                 self.scheduler.stop()
+            self._cleanup()
     
     def _run_with_tray(self):
         """Run application with system tray integration."""
@@ -108,7 +173,16 @@ class LookAwayApp:
                 signal.signal(signal.SIGTERM, self._signal_handler)
                 
                 # Run the tray icon (this blocks)
-                tray_icon.run()
+                try:
+                    tray_icon.run()
+                    # If we reach here, the tray icon exited normally
+                    print("Tray icon exited")
+                except Exception as tray_error:
+                    # This IS a critical error - the tray crashed unexpectedly
+                    log_critical_error(f"Tray icon crashed: {str(tray_error)}", exc_info=True)
+                    print(f"Tray icon error: {tray_error}")
+                    print("Falling back to console mode...")
+                    self._run_console_mode()
             else:
                 self.logger.warning("Could not create tray icon, falling back to console mode")
                 self._run_console_mode()
@@ -131,7 +205,13 @@ class LookAwayApp:
         
         try:
             while True:
-                command = input("LookAway> ").strip().lower()
+                try:
+                    command = input("LookAway> ").strip().lower()
+                except Exception as input_error:
+                    log_critical_error(f"Console input() failed: {str(input_error)}", exc_info=True)
+                    # If input fails, we can't continue in console mode
+                    print("Console input failed, exiting...")
+                    break
                 
                 if command == 'status':
                     self._print_status()
@@ -163,8 +243,12 @@ class LookAwayApp:
                 elif command:
                     print(f"Unknown command: {command}. Type 'help' for available commands.")
                 
-        except (KeyboardInterrupt, EOFError):
+        except (KeyboardInterrupt, EOFError) as e:
+            log_critical_error(f"Console mode interrupted: {type(e).__name__}: {str(e)}")
             print("\nExiting LookAway...")
+        except Exception as console_error:
+            log_critical_error(f"Console mode exception: {str(console_error)}", exc_info=True)
+            print(f"Console mode error: {console_error}")
     
     def _print_status(self):
         """Print current application status."""
@@ -192,7 +276,15 @@ class LookAwayApp:
             self.scheduler.stop()
         if self.tray_controller and self.tray_controller.tray_icon:
             self.tray_controller.tray_icon.stop()
+        self._cleanup()
         sys.exit(0)
+    
+    def _cleanup(self):
+        """Cleanup resources before exit."""
+        try:
+            cleanup_exception_handler()
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
     
     def show_status(self):
         """Show application status and exit."""
@@ -238,9 +330,11 @@ def main():
     
     args = parser.parse_args()
     
-    app = LookAwayApp()
+    app = None
     
     try:
+        app = LookAwayApp()
+        
         if args.command == 'setup' or args.force_setup:
             success = app.run_setup(force=args.force_setup)
             sys.exit(0 if success else 1)
@@ -254,9 +348,21 @@ def main():
             sys.exit(0 if success else 1)
         
     except Exception as e:
-        print(f"Error: {e}")
-        logging.error(f"Unhandled error: {e}", exc_info=True)
+        print(f"Critical Error: {e}")
+        logging.error(f"Unhandled critical error: {e}", exc_info=True)
+        
+        # Try to log with exception handler if available
+        try:
+            log_critical_error(f"Unhandled critical error in main: {str(e)}", exc_info=True)
+        except:
+            pass  # Exception handler might not be initialized
+        
         sys.exit(1)
+    
+    finally:
+        # Ensure cleanup happens
+        if app:
+            app._cleanup()
 
 
 if __name__ == "__main__":

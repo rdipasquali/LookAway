@@ -7,6 +7,18 @@ from typing import Dict, Any, Optional
 from config_manager import ConfigManager
 from notifications import NotificationManager
 
+# Import exception handler functions
+try:
+    from exception_handler import log_exception, log_critical_error, flush_exception_logs
+except ImportError:
+    # Fallback if exception handler is not available
+    def log_exception(exc_info=None, context=""):
+        pass
+    def log_critical_error(message, exc_info=None):
+        pass
+    def flush_exception_logs():
+        pass
+
 
 class EyeBreakScheduler:
     """Main scheduler for eye break reminders."""
@@ -97,7 +109,9 @@ class EyeBreakScheduler:
                 time.sleep(60)
                 
             except Exception as e:
+                log_critical_error(f"Exception in scheduler loop: {str(e)}", exc_info=True)
                 self.logger.error(f"Error in scheduler loop: {e}")
+                log_exception(context="Scheduler main loop")
                 time.sleep(60)  # Continue running even if there's an error
     
     def _should_send_reminder(self) -> bool:
@@ -138,6 +152,7 @@ class EyeBreakScheduler:
                 
         except Exception as e:
             self.logger.error(f"Error checking sleep time: {e}")
+            log_exception(context="Checking sleep time")
             return False
     
     def _send_reminder(self):
@@ -177,6 +192,7 @@ class EyeBreakScheduler:
                 self.logger.info(f"Reminder #{self.reminder_count} sent via: {', '.join(successful_methods)}")
             else:
                 self.logger.warning(f"Reminder #{self.reminder_count} failed to send via any method")
+                log_critical_error(f"Reminder #{self.reminder_count} FAILED - no methods worked")
             
             # Update last reminder time
             self.last_reminder_time = datetime.now()
@@ -186,6 +202,8 @@ class EyeBreakScheduler:
             
         except Exception as e:
             self.logger.error(f"Error sending reminder: {e}")
+            log_exception(context=f"Sending reminder #{self.reminder_count}")
+            log_critical_error(f"Exception during reminder #{self.reminder_count}: {str(e)}", exc_info=True)
     
     def get_status(self) -> Dict[str, Any]:
         """Get current scheduler status."""
@@ -264,6 +282,7 @@ class TrayController:
             return self.tray_icon
             
         except Exception as e:
+            log_critical_error(f"Error creating tray icon: {str(e)}", exc_info=True)
             logging.error(f"Error creating tray icon: {e}")
             return None
     

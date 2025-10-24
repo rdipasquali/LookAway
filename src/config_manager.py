@@ -55,7 +55,11 @@ class ConfigManager:
             'long_break_interval': 3,  # Every 3rd reminder is a long break
             'snooze_minutes': 5,
             'do_not_disturb': False,
-            'first_run': True
+            'first_run': True,
+            'logging': {
+                'exception_logging': True,
+                'log_directory': 'logs'
+            }
         }
     
     def create_config_dir(self):
