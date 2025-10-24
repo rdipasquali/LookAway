@@ -1,6 +1,6 @@
 # LookAway - Eye Break Reminder
 
-A cross-platform Python application that sends periodic reminders to take breaks from screen time to protect your eye health.
+A cross-platform Python application that sends periodic reminders to take breaks from screen time to protect your eye health.\
 Disclaimer: this is a personal test for "vibe coding". Apart from the starting idea, language, features and this row all is written by GitHub Copilot in Agent mode with Claude Sonnet 4.
 
 ## Features
