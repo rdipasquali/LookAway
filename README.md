@@ -234,18 +234,36 @@ To reset all settings:
 2. Delete the `config/settings.json` file
 3. Restart the application (setup wizard will run)
 
-## Creating Windows Installer
+## Creating Installers
 
-### Building the Installer Executable
+LookAway includes a comprehensive cross-platform build system to create professional installers for both Windows and Linux that embed all necessary files and provide user-friendly setup experiences.
 
-LookAway includes a comprehensive build system to create a professional Windows installer that embeds all necessary files and provides a user-friendly setup experience.
+### Cross-Platform Building
+
+#### Build All Platforms (Recommended)
+
+Build installers for both Windows and Linux:
+
+```bash
+cd installer
+python build_cross_platform.py
+```
+
+This interactive script lets you choose:
+- Windows only
+- Linux only  
+- Both platforms
+- Current platform only
 
 #### Prerequisites for Building
 
 1. **Python Environment**: Ensure you have the virtual environment set up:
    ```bash
-   # Activate virtual environment
+   # Windows
    .venv\Scripts\activate
+   
+   # Linux  
+   source .venv/bin/activate
    
    # Install all dependencies
    pip install -r requirements.txt
@@ -256,9 +274,21 @@ LookAway includes a comprehensive build system to create a professional Windows 
    pip install pyinstaller
    ```
 
-#### Build Methods
+3. **Linux-specific dependencies** (for Linux builds):
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get install python3-tk libnotify-bin
+   
+   # Fedora
+   sudo dnf install tkinter libnotify
+   
+   # Arch Linux  
+   sudo pacman -S tk libnotify
+   ```
 
-##### Method 1: Complete Build (Recommended)
+### Windows Installer
+
+#### Method 1: Complete Windows Build
 
 Build both the main application and installer in one step:
 
@@ -271,7 +301,7 @@ This creates:
 - `dist\LookAway.exe` - Standalone application (17+ MB)
 - `dist\LookAway-Installer.exe` - Complete installer with setup wizard (29+ MB)
 
-##### Method 2: Step-by-Step Build
+#### Method 2: Step-by-Step Windows Build
 
 1. **Build the main application:**
    ```bash
@@ -289,9 +319,44 @@ This creates:
    python -m PyInstaller --onefile --windowed --name=LookAway-Installer installer_wizard.py
    ```
 
-#### Installer Features
+### Linux Installer
 
-The created installer (`LookAway-Installer.exe`) includes:
+#### Complete Linux Build
+
+Build both the main Linux application and installer:
+
+```bash
+cd installer
+python build_linux_complete.py
+```
+
+This creates:
+- `dist/lookaway` - Standalone Linux application (17+ MB)  
+- `dist/lookaway-installer-linux` - Complete Linux installer with setup wizard (29+ MB)
+
+#### Step-by-Step Linux Build
+
+1. **Build the main Linux application:**
+   ```bash
+   cd installer
+   python build_linux_app.py
+   ```
+
+2. **Create Linux installer with embedded files:**
+   ```bash
+   python create_linux_installer.py
+   ```
+
+3. **Build Linux installer executable:**
+   ```bash
+   python -m PyInstaller --onefile --name=lookaway-installer-linux linux_installer_with_files.py
+   ```
+
+### Installer Features
+
+#### Windows Installer (`LookAway-Installer.exe`)
+
+The Windows installer includes:
 
 - **Embedded Files**: Contains the complete LookAway.exe and all configuration files
 - **Installation Wizard**: Step-by-step GUI setup process
@@ -301,6 +366,20 @@ The created installer (`LookAway-Installer.exe`) includes:
 - **License Display**: Shows the actual LICENSE file content
 - **Installation Path Selection**: Choose custom installation directory
 - **Uninstaller Creation**: Automatic uninstaller generation
+
+#### Linux Installer (`lookaway-installer-linux`)
+
+The Linux installer includes:
+
+- **Embedded Files**: Contains the complete lookaway executable and all configuration files
+- **Cross-Desktop Support**: Works on GNOME, KDE, XFCE, MATE, Cinnamon, and other Linux desktops
+- **Dependency Checking**: Automatically checks for required system packages (tkinter, notify-send)
+- **Desktop Integration**: Creates application menu entries and autostart configuration
+- **System Tray Detection**: Detects and configures system tray support per desktop environment
+- **Email Configuration**: Interactive SMTP setup with common provider presets
+- **Telegram Setup**: Complete Telegram bot configuration with validation
+- **Installation Path Selection**: Follows Linux filesystem hierarchy standards
+- **Uninstaller Creation**: Creates shell script for clean removal
 
 #### Build Configuration
 
@@ -349,10 +428,27 @@ Edit `installer_wizard.py` to customize:
 
 #### Distribution
 
-The final installer is completely self-contained and can be distributed without dependencies:
+The final installers are completely self-contained and can be distributed without dependencies:
 
-1. **Share `LookAway-Installer.exe`** - Users run this to install LookAway
+**Windows:**
+1. **Share `LookAway-Installer.exe`** - Users run this to install LookAway  
 2. **Alternative: Share `LookAway.exe`** - Direct executable (requires manual configuration)
+
+**Linux:**
+1. **Share `lookaway-installer-linux`** - Users run this to install LookAway
+2. **Alternative: Share `lookaway`** - Direct executable (requires manual configuration)
+
+**Note for Linux:** Users may need to install system dependencies:
+```bash
+# Ubuntu/Debian
+sudo apt-get install python3-tk libnotify-bin
+
+# Fedora  
+sudo dnf install tkinter libnotify
+
+# Arch Linux
+sudo pacman -S tk libnotify
+```
 
 #### Troubleshooting Build Issues
 
@@ -378,20 +474,35 @@ The final installer is completely self-contained and can be distributed without 
 
 **Build Verification:**
 
-Test the built executable:
+Test the built executables:
+
+Windows:
 ```bash
 cd dist
 .\LookAway.exe --help           # Test main application
 .\LookAway-Installer.exe       # Test installer GUI
 ```
 
+Linux:
+```bash
+cd dist
+./lookaway --help              # Test main application
+./lookaway-installer-linux     # Test installer GUI (requires X11/Wayland)
+```
+
 #### Size Optimization
 
 Current build sizes:
+
+**Windows:**
 - **LookAway.exe**: ~17.4 MB (includes all Python dependencies)
 - **LookAway-Installer.exe**: ~29.6 MB (includes LookAway.exe + installer GUI)
 
-The installer uses gzip compression for embedded files to minimize size.
+**Linux:**
+- **lookaway**: ~17.4 MB (includes all Python dependencies)  
+- **lookaway-installer-linux**: ~29.6 MB (includes lookaway + installer GUI)
+
+Both installers use gzip compression for embedded files to minimize size.
 
 ## Development
 
