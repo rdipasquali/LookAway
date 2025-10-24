@@ -1,0 +1,16 @@
+# Installation Requirements for LookAway Installer
+
+# Core installer dependencies
+pyinstaller>=5.0
+tk  # Should be included with Python
+
+# Optional dependencies for enhanced functionality  
+pywin32  # For Windows shortcuts and registry access
+
+# Runtime dependencies (these will be bundled with the app)
+schedule>=1.2.0
+plyer>=2.1.0
+python-telegram-bot>=20.7
+python-dotenv>=1.0.0
+pystray>=0.19.4
+Pillow>=10.0.1
