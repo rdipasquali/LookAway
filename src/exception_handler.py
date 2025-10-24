@@ -77,58 +77,7 @@ class CentralExceptionHandler:
         
         # Clear any existing handlers
         self.logger.handlers.clear()
-        
-        # Create file handler with rotation
-        log_file = self.log_dir / "exceptions.log"
-        
-        # Use a simple file handler (avoiding RotatingFileHandler for exe compatibility)
-        try:
-            # If log file is too large (>1MB), archive it
-            if log_file.exists() and log_file.stat().st_size > 1024 * 1024:
-                archive_file = self.log_dir / f"exceptions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-                try:
-                    log_file.rename(archive_file)
-                except Exception:
-                    # If rename fails, just truncate
-                    log_file.write_text("")
-            
-            file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
-            
-            # Create formatter
-            formatter = logging.Formatter(
-                '%(asctime)s [%(levelname)s] %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S'
-            )
-            file_handler.setFormatter(formatter)
-            
-            # Add handler to logger
-            self.logger.addHandler(file_handler)
-            
-            # Force flush after setup
-            file_handler.flush()
-            
-            # Log startup with more details
-            self.logger.error("=" * 80)
-            self.logger.error(f"LookAway Exception Logging Started - PID: {os.getpid()}")
-            self.logger.error(f"Executable: {sys.executable}")
-            self.logger.error(f"Arguments: {sys.argv}")
-            self.logger.error(f"Frozen: {getattr(sys, 'frozen', False)}")
-            self.logger.error(f"Platform: {sys.platform}")
-            self.logger.error(f"Python Version: {sys.version}")
-            self.logger.error(f"Working Directory: {os.getcwd()}")
-            self.logger.error(f"Log Directory: {self.log_dir}")
-            self.logger.error("=" * 80)
-            
-            # Force flush after startup log
-            file_handler.flush()
-            
-        except Exception as e:
-            # If logging setup fails, disable logging but print details
-            print(f"Failed to setup exception logging: {e}")
-            print(f"Log directory attempted: {self.log_dir}")
-            print(f"Current working directory: {os.getcwd()}")
-            self.enabled = False
-    
+
     def _install_handlers(self):
         """Install exception handlers."""
         if not self.enabled:

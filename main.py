@@ -54,6 +54,13 @@ class LookAwayApp:
         self.tray_controller = None
         self.exception_handler = None
         
+        # Load config first
+        try:
+            self.config = self.config_manager.load_config()
+        except Exception as e:
+            print(f"Warning: Could not load config, using defaults: {e}")
+            self.config = {}
+        
         # Setup exception handling first
         self._setup_exception_handling()
         
@@ -108,13 +115,20 @@ class LookAwayApp:
             
         os.makedirs(log_dir, exist_ok=True)
         
+        # Clean up old log files
+        self._cleanup_old_logs(log_dir)
+        
         log_file = os.path.join(log_dir, 'lookaway.log')
         
         # Clear any existing handlers to avoid conflicts
         logging.getLogger().handlers.clear()
         
+        # Get logging level from config
+        log_level_name = self.config.get('logging', {}).get('level', 'INFO')
+        log_level = getattr(logging, log_level_name.upper(), logging.INFO)
+        
         logging.basicConfig(
-            level=logging.INFO,
+            level=log_level,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
                 logging.FileHandler(log_file),
@@ -122,59 +136,59 @@ class LookAwayApp:
             ]
         )
         
-        # Set specific loggers to appropriate levels
-        logging.getLogger('PIL').setLevel(logging.WARNING)  # Reduce PIL noise
-        logging.getLogger('telegram').setLevel(logging.DEBUG)  # Keep Telegram detailed for debugging
-        logging.getLogger('notifications').setLevel(logging.DEBUG)  # Our notification debugging
-        
         # Log the setup information for debugging
         logging.info(f"Logging configured - log file: {log_file}")
         logging.info(f"Working directory: {os.getcwd()}")
         logging.info(f"Script location: {os.path.dirname(__file__)}")
         logging.info(f"Frozen: {getattr(sys, 'frozen', False)}")
     
-    def debug_log(self, message, exc_info=None):
-        """Debug logging to both exception handler and console for .exe debugging."""
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        formatted_msg = f"[DEBUG {timestamp}] {message}"
-        
-        # Print to console for immediate visibility
-        print(formatted_msg)
-        sys.stdout.flush()
-        
-        # Also log to exception handler if available
+    def _cleanup_old_logs(self, log_dir):
+        """Clean up old log files based on configuration."""
         try:
-            if self.exception_handler and self.exception_handler.logger:
-                if exc_info:
-                    self.exception_handler.logger.debug(message, exc_info=exc_info)
-                else:
-                    self.exception_handler.logger.debug(message)
-                self.exception_handler.flush_logs()
-        except Exception:
-            pass  # Don't let debug logging break the app
-        
-        # Also try to write directly to debug.log for .exe debugging
-        try:
-            # Use same logic as _setup_logging for .exe compatibility
-            if getattr(sys, 'frozen', False):
-                log_dir = Path(os.getcwd()) / 'logs'
-            else:
-                log_dir = Path(os.path.dirname(__file__)) / 'logs'
+            max_log_files = self.config.get('logging', {}).get('max_log_files', 5)
+            max_file_size_mb = self.config.get('logging', {}).get('max_file_size_mb', 10)
             
-            log_dir.mkdir(parents=True, exist_ok=True)
-            debug_file = log_dir / 'debug.log'
+            # Get all log files
+            log_files = []
+            for filename in os.listdir(log_dir):
+                if filename.endswith(('.log', '.txt')):
+                    filepath = os.path.join(log_dir, filename)
+                    if os.path.isfile(filepath):
+                        stat = os.stat(filepath)
+                        log_files.append({
+                            'path': filepath,
+                            'name': filename,
+                            'mtime': stat.st_mtime,
+                            'size': stat.st_size
+                        })
             
-            with open(debug_file, 'a', encoding='utf-8') as f:
-                if exc_info:
-                    import traceback
-                    f.write(f"{formatted_msg}\n")
-                    f.write(f"Exception info: {traceback.format_exception(*exc_info) if isinstance(exc_info, tuple) else traceback.format_exc()}\n")
-                else:
-                    f.write(f"{formatted_msg}\n")
-                f.flush()
-        except Exception:
-            pass  # Don't let debug logging break the app
-    
+            # Sort by modification time (newest first)
+            log_files.sort(key=lambda x: x['mtime'], reverse=True)
+            
+            # Remove files that are too large
+            for log_file in log_files[:]:  # Copy list to modify during iteration
+                size_mb = log_file['size'] / (1024 * 1024)
+                if size_mb > max_file_size_mb:
+                    try:
+                        os.remove(log_file['path'])
+                        print(f"Removed oversized log file: {log_file['name']} ({size_mb:.1f}MB)")
+                        log_files.remove(log_file)
+                    except OSError as e:
+                        print(f"Failed to remove {log_file['name']}: {e}")
+            
+            # Keep only the newest N files
+            if len(log_files) > max_log_files:
+                for log_file in log_files[max_log_files:]:
+                    try:
+                        os.remove(log_file['path'])
+                        print(f"Removed old log file: {log_file['name']}")
+                    except OSError as e:
+                        print(f"Failed to remove {log_file['name']}: {e}")
+                        
+        except Exception as e:
+            print(f"Error during log cleanup: {e}")
+            # Don't let log cleanup errors break the app
+
     def run_setup(self, force=False):
         """Run the setup wizard."""
         if force or self.config_manager.is_first_run():
@@ -255,10 +269,8 @@ class LookAwayApp:
     
     def _run_console_mode(self):
         """Run application in console mode."""
-        self.debug_log("Starting console mode")
         
         try:
-            self.debug_log("Console mode: About to print header")
             print("LookAway running in console mode.")
             print("Commands:")
             print("  status  - Show current status")
@@ -270,11 +282,9 @@ class LookAwayApp:
             print("  quit    - Exit application")
             print()
             
-            self.debug_log("Console mode: Checking console availability")
             # Check if we have a proper console for input
             import sys
             if not sys.stdin.isatty():
-                self.debug_log("No TTY detected, running in simple mode")
                 print("Running in simple mode (no interactive console)")
                 print("LookAway will run until you close this window.")
                 print("Press Ctrl+C to exit gracefully.")
@@ -283,21 +293,16 @@ class LookAwayApp:
                     while True:
                         time.sleep(1)
                 except KeyboardInterrupt:
-                    self.debug_log("Received KeyboardInterrupt in simple mode")
                     print("\nShutting down gracefully...")
                 return
             
-            self.debug_log("Console mode: Starting interactive loop")
             while True:
                 try:
                     command = input("LookAway> ").strip().lower()
-                    self.debug_log(f"Console command received: {command}")
                 except EOFError:
-                    self.debug_log("Console EOFError - treating as quit")
                     print("\nEOF received, shutting down...")
                     break
                 except Exception as input_error:
-                    self.debug_log(f"Console input() failed: {str(input_error)}", exc_info=True)
                     # If input fails, we can't continue in console mode
                     print("Console input failed, exiting...")
                     break
@@ -317,7 +322,6 @@ class LookAwayApp:
                         self.scheduler.snooze(minutes)
                         print(f"Next reminder snoozed for {minutes} minutes.")
                     except (ValueError, EOFError) as snooze_error:
-                        self.debug_log(f"Snooze input error: {snooze_error}")
                         print("Using default 5 minutes.")
                         self.scheduler.snooze(5)
                 elif command == 'dnd':
@@ -327,7 +331,6 @@ class LookAwayApp:
                     results = self.scheduler.notification_manager.test_all_connections()
                     print(f"Notification test results: {results}")
                 elif command in ['quit', 'exit', 'q']:
-                    self.debug_log("Console quit command received")
                     print("Exiting LookAway...")
                     break
                 elif command == 'help':
@@ -339,13 +342,11 @@ class LookAwayApp:
                     print(f"Unknown command: {command}. Type 'help' for available commands.")
                 
         except (KeyboardInterrupt, EOFError) as e:
-            self.debug_log(f"Console mode interrupted: {type(e).__name__}: {str(e)}")
             print("\nExiting LookAway...")
         except Exception as console_error:
-            self.debug_log(f"Console mode exception: {str(console_error)}", exc_info=True)
             print(f"Console mode error: {console_error}")
         finally:
-            self.debug_log("Console mode cleanup complete")
+            print("Console mode cleanup complete")
     
     def _print_status(self):
         """Print current application status."""
@@ -450,7 +451,7 @@ def main():
         
         # Try to log with exception handler if available
         try:
-            log_critical_error(f"Unhandled critical error in main: {str(e)}", exc_info=True)
+            logging.error(f"Unhandled critical error in main: {str(e)}", exc_info=True)
         except:
             pass  # Exception handler might not be initialized
         

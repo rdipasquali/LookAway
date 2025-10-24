@@ -304,7 +304,7 @@ class NotificationManager:
                 success = handler.send_notification(title, message)
                 results[name] = success
                 if success:
-                    logging.info(f"Notification sent successfully via {name}")
+                    logging.debug(f"Notification sent successfully via {name}")
                 else:
                     logging.warning(f"Notification failed via {name}")
             except Exception as e:

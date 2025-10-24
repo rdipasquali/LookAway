@@ -40,5 +40,10 @@
     "long_break_interval": 3,
     "snooze_minutes": 5,
     "do_not_disturb": false,
-    "first_run": false
+    "first_run": false,
+    "logging": {
+        "level": "INFO",
+        "max_log_files": 5,
+        "max_file_size_mb": 10
+    }
 }
