@@ -8,6 +8,9 @@ from typing import Dict, Any, Optional
 from plyer import notification
 import platform
 
+# Set up logger for this module
+logger = logging.getLogger('notifications')
+
 try:
     from telegram import Bot
     from telegram.error import TelegramError
@@ -145,17 +148,21 @@ class TelegramNotificationHandler(NotificationHandler):
     def send_notification(self, title: str, message: str) -> bool:
         """Send a Telegram notification."""
         try:
+            logger.debug(f"Telegram send_notification called - title: {title}")
+            
             if not TELEGRAM_AVAILABLE:
-                logging.error("Telegram library not available")
+                logger.error("Telegram library not available")
                 return False
                 
             if not all([self.bot_token, self.chat_id]):
-                logging.error("Telegram configuration incomplete")
+                logger.error(f"Telegram configuration incomplete - bot_token: {'SET' if self.bot_token else 'MISSING'}, chat_id: {'SET' if self.chat_id else 'MISSING'}")
                 return False
             
             if not self.bot:
-                logging.error("Telegram bot not initialized")
+                logger.error("Telegram bot not initialized")
                 return False
+            
+            logger.info(f"Telegram attempting to send message to chat_id: {self.chat_id}")
             
             try:
                 full_message = f"🔔 *{title}*\n\n{message}\n\n_Take care of your eyes!_ 👀"
@@ -172,19 +179,27 @@ class TelegramNotificationHandler(NotificationHandler):
                 def telegram_thread():
                     """Run Telegram operation in separate thread with its own event loop."""
                     try:
+                        logger.debug("Telegram thread started")
+                        
                         # Create a completely fresh event loop for this thread
                         new_loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(new_loop)
                         
+                        logger.debug("Telegram thread event loop created")
+                        
                         try:
+                            logger.info(f"Telegram sending message: {full_message[:100]}...")
+                            
                             # Send the message in the new loop
-                            new_loop.run_until_complete(
+                            result = new_loop.run_until_complete(
                                 self.bot.send_message(
                                     chat_id=self.chat_id,
                                     text=full_message,
                                     parse_mode='Markdown'
                                 )
                             )
+                            
+                            logger.info(f"Telegram message sent successfully, result: {result}")
                             result_queue.put(True)
                             
                         finally:
@@ -210,15 +225,17 @@ class TelegramNotificationHandler(NotificationHandler):
                         result_queue.put(False)
                 
                 # Start the thread
+                logger.debug("Starting Telegram thread")
                 telegram_thread_obj = threading.Thread(target=telegram_thread, daemon=True)
                 telegram_thread_obj.start()
                 
                 # Wait for completion with timeout
+                logger.debug("Waiting for Telegram thread completion")
                 telegram_thread_obj.join(timeout=30)  # 30 second timeout
                 
                 # Check results
                 if telegram_thread_obj.is_alive():
-                    logging.error("Telegram thread timed out")
+                    logger.error("Telegram thread timed out")
                     return False
                 
                 if not exception_queue.empty():

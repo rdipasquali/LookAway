@@ -1,5 +1,6 @@
 import json
 import os
+import logging
 from typing import Dict, Any, Optional
 from datetime import time
 
@@ -9,7 +10,15 @@ class ConfigManager:
     
     def __init__(self, config_dir: str = None):
         if config_dir is None:
-            config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config')
+            # For .exe compatibility - prioritize installation directory over bundled config
+            import sys
+            
+            if getattr(sys, 'frozen', False):
+                # Running as .exe - use working directory (installation directory)
+                config_dir = os.path.join(os.getcwd(), 'config')
+            else:
+                # Running as Python script - use script directory
+                config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config')
         
         self.config_dir = config_dir
         self.config_file = os.path.join(config_dir, 'settings.json')
@@ -68,19 +77,33 @@ class ConfigManager:
     
     def load_config(self) -> Dict[str, Any]:
         """Load configuration from file or create default if not exists."""
+        import sys
+        import logging
+        
+        # Log config loading information for debugging
+        logging.info(f"Loading config from: {self.config_file}")
+        logging.info(f"Config directory: {self.config_dir}")
+        logging.info(f"Config file exists: {os.path.exists(self.config_file)}")
+        logging.info(f"Frozen (exe): {getattr(sys, 'frozen', False)}")
+        logging.info(f"Working directory: {os.getcwd()}")
+        
         self.create_config_dir()
         
         if not os.path.exists(self.config_file):
+            logging.info("Config file not found, using defaults")
             return self.default_config.copy()
         
         try:
             with open(self.config_file, 'r', encoding='utf-8') as f:
                 config = json.load(f)
+            logging.info("Config file loaded successfully")
+            
             # Merge with default config to ensure all keys exist
             merged_config = self.default_config.copy()
             self._deep_merge(merged_config, config)
             return merged_config
-        except (json.JSONDecodeError, FileNotFoundError):
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            logging.error(f"Error reading config file: {e}")
             return self.default_config.copy()
     
     def save_config(self, config: Dict[str, Any]) -> bool:

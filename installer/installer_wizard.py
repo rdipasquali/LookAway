@@ -835,29 +835,58 @@ You can start the application now or access it later from:
         config_dir = os.path.join(self.config['install_path'], 'config')
         os.makedirs(config_dir, exist_ok=True)
         
-        # Create initial configuration
+        # Create initial configuration using the complete development format
         initial_config = {
-            'reminder_interval': self.config['reminder_interval'],
-            'notification_methods': {
+            'reminder_interval_minutes': self.config['reminder_interval'],
+            'notifications': {
                 'desktop': True,
                 'email': self.config['email_enabled'],
                 'telegram': self.config['telegram_enabled']
+            },
+            'email_settings': {
+                'smtp_server': '',
+                'smtp_port': 587,
+                'email': '',
+                'password': '',
+                'recipient': ''
+            },
+            'telegram_settings': {
+                'bot_token': '',
+                'chat_id': ''
             },
             'sleep_hours': {
                 'start': self.config['sleep_start'],
                 'end': self.config['sleep_end']
             },
-            'first_run': True,
-            'version': '1.0.0'
+            'messages': [
+                "Time for a break! Look away from your screen for 20 seconds.",
+                "Take a moment to rest your eyes. Look at something 20 feet away.",
+                "Eye break time! Blink several times and look into the distance.",
+                "Give your eyes a rest. Focus on something far away for a moment.",
+                "Break time! Close your eyes for a few seconds or look outside."
+            ],
+            'break_types': {
+                'quick_break': {
+                    'duration_seconds': 20,
+                    'description': 'Quick eye rest - look away for 20 seconds'
+                },
+                'long_break': {
+                    'duration_seconds': 300,
+                    'description': 'Long break - step away from computer for 5 minutes'
+                }
+            },
+            'long_break_interval': 3,
+            'snooze_minutes': 5,
+            'do_not_disturb': False,
+            'first_run': False
         }
         
-        # Add email configuration if enabled and configured
+        # Override with user-configured settings if they provided them
         if self.config['email_enabled'] and 'email_settings' in self.config:
-            initial_config['email_settings'] = self.config['email_settings']
+            initial_config['email_settings'].update(self.config['email_settings'])
         
-        # Add telegram configuration if enabled and configured
         if self.config['telegram_enabled'] and 'telegram_settings' in self.config:
-            initial_config['telegram_settings'] = self.config['telegram_settings']
+            initial_config['telegram_settings'].update(self.config['telegram_settings'])
         
         config_file = os.path.join(config_dir, 'settings.json')
         with open(config_file, 'w') as f:

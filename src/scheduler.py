@@ -178,7 +178,6 @@ class EyeBreakScheduler:
                 # Get random message from configured messages
                 messages = self.config.get('messages', ["Time to rest your eyes!"])
                 message = random.choice(messages)
-                message += f" ({duration} seconds)"
             
             # Add reminder count to message
             message += f"\n\nReminder #{self.reminder_count}"

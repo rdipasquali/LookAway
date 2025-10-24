@@ -43,44 +43,67 @@ def build_main_app():
     cmd = [
         sys.executable, '-m', 'PyInstaller',
         '--onefile',                    # Single executable file
-        '--windowed',                   # No console window
+        '--windowed',                   # No console window (for tray mode)
         '--name=LookAway',              # Output name
-        '--hidden-import=pystray',      # System tray support
-        '--hidden-import=PIL',          # Image support
-        '--hidden-import=plyer',        # Notifications
-        '--hidden-import=plyer.platforms', # Plyer platform specific modules
-        '--hidden-import=plyer.platforms.win', # Plyer Windows platform
-        '--hidden-import=win10toast',   # Windows toast notifications
-        '--hidden-import=tkinter',      # GUI support
-        '--hidden-import=smtplib',      # Email support
-        '--hidden-import=ssl',          # SSL/TLS support
-        '--hidden-import=email',        # Email utilities
-        '--hidden-import=email.mime',   # Email MIME support
-        '--hidden-import=email.mime.text', # Email text MIME
-        '--hidden-import=email.mime.multipart', # Email multipart MIME
-        '--hidden-import=telegram',     # Telegram bot support
-        '--hidden-import=telegram.ext', # Telegram bot extensions
-        '--hidden-import=httpx',        # HTTP client for telegram
-        '--hidden-import=asyncio',      # Async support
-        '--hidden-import=logging',      # Logging support
-        '--hidden-import=abc',          # Abstract base classes
-        '--hidden-import=typing',       # Type hints
-        '--hidden-import=platform',     # Platform detection
-        '--hidden-import=json',         # JSON support
-        '--hidden-import=threading',    # Threading support
-        '--hidden-import=time',         # Time utilities
-        '--hidden-import=datetime',     # Date/time utilities
-        '--hidden-import=pathlib',      # Path utilities
-        '--hidden-import=winreg',       # Windows registry
-        '--hidden-import=subprocess',   # Process management
-        '--hidden-import=getpass',      # Password input
-        '--hidden-import=os',           # Operating system interface
-        '--hidden-import=sys',          # System-specific parameters
-        '--hidden-import=signal',       # Signal handling
-        '--hidden-import=argparse',     # Argument parsing
-        '--hidden-import=random',       # Random numbers
-        '--hidden-import=traceback',    # Exception tracebacks
+        # System tray and GUI support  
+        '--hidden-import=pystray',
+        '--hidden-import=pystray._base',
+        '--hidden-import=pystray._win32', 
+        '--hidden-import=PIL',
+        '--hidden-import=PIL.Image',
+        '--hidden-import=PIL.ImageDraw',
+        '--hidden-import=PIL.ImageFont',
+        '--hidden-import=six',
+        '--hidden-import=six.moves',
+        '--hidden-import=tkinter',
+        
+        # Notification system
+        '--hidden-import=plyer',
+        '--hidden-import=plyer.platforms',
+        '--hidden-import=plyer.platforms.win',
+        '--hidden-import=plyer.platforms.win.notification',
+        '--hidden-import=win10toast',
+        
+        # Email support
+        '--hidden-import=smtplib',
+        '--hidden-import=ssl',
+        '--hidden-import=socket',
+        '--hidden-import=base64',
+        '--hidden-import=email',
+        '--hidden-import=email.mime',
+        '--hidden-import=email.mime.text',
+        '--hidden-import=email.mime.multipart',
+        
+        # Telegram bot support
+        '--hidden-import=telegram',
+        '--hidden-import=telegram.ext',
+        '--hidden-import=httpx',
+        
+        # Standard library modules (Python 3.14 compatibility)
+        '--hidden-import=asyncio',
+        '--hidden-import=logging',
+        '--hidden-import=abc',
+        '--hidden-import=typing',
+        '--hidden-import=platform',
+        '--hidden-import=json',
+        '--hidden-import=threading',
+        '--hidden-import=time',
+        '--hidden-import=datetime',
+        '--hidden-import=pathlib',
+        '--hidden-import=os',
+        '--hidden-import=sys',
+        '--hidden-import=signal',
+        '--hidden-import=argparse',
+        '--hidden-import=random',
+        '--hidden-import=traceback',
+        '--hidden-import=getpass',
+        
+        # Windows-specific
+        '--hidden-import=winreg',
+        '--hidden-import=subprocess',
         '--collect-all=pystray',        # Collect all pystray dependencies
+        '--collect-all=PIL',            # Collect all PIL/Pillow dependencies
+        '--collect-all=six',            # Collect all six compatibility library
         '--collect-all=plyer',          # Collect all plyer dependencies
         '--collect-all=telegram',       # Collect all telegram dependencies
         '--collect-all=tkinter',        # Collect all tkinter components
