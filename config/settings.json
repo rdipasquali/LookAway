@@ -1,0 +1,44 @@
+{
+    "reminder_interval_minutes": 20,
+    "notifications": {
+        "desktop": true,
+        "email": false,
+        "telegram": false
+    },
+    "email_settings": {
+        "smtp_server": "",
+        "smtp_port": 587,
+        "email": "",
+        "password": "",
+        "recipient": ""
+    },
+    "telegram_settings": {
+        "bot_token": "",
+        "chat_id": ""
+    },
+    "sleep_hours": {
+        "start": "23:00",
+        "end": "07:00"
+    },
+    "messages": [
+        "Time for a break! Look away from your screen for 20 seconds.",
+        "Take a moment to rest your eyes. Look at something 20 feet away.",
+        "Eye break time! Blink several times and look into the distance.",
+        "Give your eyes a rest. Focus on something far away for a moment.",
+        "Break time! Close your eyes for a few seconds or look outside."
+    ],
+    "break_types": {
+        "quick_break": {
+            "duration_seconds": 20,
+            "description": "Quick eye rest - look away for 20 seconds"
+        },
+        "long_break": {
+            "duration_seconds": 300,
+            "description": "Long break - step away from computer for 5 minutes"
+        }
+    },
+    "long_break_interval": 3,
+    "snooze_minutes": 5,
+    "do_not_disturb": false,
+    "first_run": false
+}

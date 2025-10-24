@@ -1,0 +1,6 @@
+schedule==1.2.0
+plyer==2.1.0
+python-telegram-bot==20.7
+python-dotenv==1.0.0
+pystray==0.19.4
+Pillow==10.0.1
