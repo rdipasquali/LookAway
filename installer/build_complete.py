@@ -66,6 +66,12 @@ def main():
         print("Step 3: Building installer executable")
         print(f"{'='*40}")
         
+        # Check if installer file exists
+        installer_file = installer_dir / "windows_installer_with_files.py"
+        if not installer_file.exists():
+            print("❌ Installer file not found. This should be created by create_installer.py")
+            return False
+        
         result = subprocess.run([
             sys.executable, "-m", "PyInstaller", 
             "--onefile", "--windowed", 

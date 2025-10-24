@@ -234,6 +234,165 @@ To reset all settings:
 2. Delete the `config/settings.json` file
 3. Restart the application (setup wizard will run)
 
+## Creating Windows Installer
+
+### Building the Installer Executable
+
+LookAway includes a comprehensive build system to create a professional Windows installer that embeds all necessary files and provides a user-friendly setup experience.
+
+#### Prerequisites for Building
+
+1. **Python Environment**: Ensure you have the virtual environment set up:
+   ```bash
+   # Activate virtual environment
+   .venv\Scripts\activate
+   
+   # Install all dependencies
+   pip install -r requirements.txt
+   ```
+
+2. **PyInstaller**: The build system uses PyInstaller (automatically installed):
+   ```bash
+   pip install pyinstaller
+   ```
+
+#### Build Methods
+
+##### Method 1: Complete Build (Recommended)
+
+Build both the main application and installer in one step:
+
+```bash
+cd installer
+python build_complete.py
+```
+
+This creates:
+- `dist\LookAway.exe` - Standalone application (17+ MB)
+- `dist\LookAway-Installer.exe` - Complete installer with setup wizard (29+ MB)
+
+##### Method 2: Step-by-Step Build
+
+1. **Build the main application:**
+   ```bash
+   cd installer
+   python build_app.py
+   ```
+
+2. **Create installer with embedded files:**
+   ```bash
+   python create_installer.py
+   ```
+
+3. **Build installer executable:**
+   ```bash
+   python -m PyInstaller --onefile --windowed --name=LookAway-Installer installer_wizard.py
+   ```
+
+#### Installer Features
+
+The created installer (`LookAway-Installer.exe`) includes:
+
+- **Embedded Files**: Contains the complete LookAway.exe and all configuration files
+- **Installation Wizard**: Step-by-step GUI setup process
+- **Email Configuration**: Interactive email settings with validation
+- **Telegram Setup**: Complete Telegram bot configuration walkthrough
+- **Auto-start Setup**: Optional Windows startup integration
+- **License Display**: Shows the actual LICENSE file content
+- **Installation Path Selection**: Choose custom installation directory
+- **Uninstaller Creation**: Automatic uninstaller generation
+
+#### Build Configuration
+
+The build system includes several configuration files in the `installer/` directory:
+
+```
+installer/
+├── build_app.py              # Builds main LookAway.exe
+├── build_complete.py         # Complete build process
+├── create_installer.py       # Creates installer with embedded files
+├── installer_wizard.py       # GUI installation wizard
+├── requirements.txt          # Installer-specific dependencies
+└── README.md                # Build system documentation
+```
+
+#### Advanced Build Options
+
+##### Custom PyInstaller Options
+
+The build system uses optimized PyInstaller settings:
+
+```bash
+# Main application build
+python -m PyInstaller \
+    --onefile \
+    --windowed \
+    --name=LookAway \
+    --hidden-import=plyer \
+    --hidden-import=pystray \
+    --hidden-import=telegram \
+    --collect-all=plyer \
+    --collect-all=telegram \
+    --add-data=src;src \
+    --add-data=config;config \
+    main.py
+```
+
+##### Installer Customization
+
+Edit `installer_wizard.py` to customize:
+- Installation steps and pages
+- Email/Telegram configuration UI
+- Installation directory defaults
+- Auto-start behavior
+- License text display
+
+#### Distribution
+
+The final installer is completely self-contained and can be distributed without dependencies:
+
+1. **Share `LookAway-Installer.exe`** - Users run this to install LookAway
+2. **Alternative: Share `LookAway.exe`** - Direct executable (requires manual configuration)
+
+#### Troubleshooting Build Issues
+
+**Common Build Problems:**
+
+1. **Unicode Character Errors:**
+   ```
+   UnicodeEncodeError: 'charmap' codec can't encode character
+   ```
+   - Fixed in build scripts by removing Unicode symbols
+   - Use ASCII-compatible characters only
+
+2. **Missing Dependencies:**
+   ```
+   ModuleNotFoundError: No module named 'plyer'
+   ```
+   - Ensure virtual environment is activated
+   - Run: `pip install -r requirements.txt`
+
+3. **PyInstaller Import Errors:**
+   - Build scripts include comprehensive `--hidden-import` flags
+   - All required modules are explicitly included
+
+**Build Verification:**
+
+Test the built executable:
+```bash
+cd dist
+.\LookAway.exe --help           # Test main application
+.\LookAway-Installer.exe       # Test installer GUI
+```
+
+#### Size Optimization
+
+Current build sizes:
+- **LookAway.exe**: ~17.4 MB (includes all Python dependencies)
+- **LookAway-Installer.exe**: ~29.6 MB (includes LookAway.exe + installer GUI)
+
+The installer uses gzip compression for embedded files to minimize size.
+
 ## Development
 
 ### Project Structure
