@@ -48,6 +48,8 @@ def build_main_app():
         '--hidden-import=pystray',      # System tray support
         '--hidden-import=PIL',          # Image support
         '--hidden-import=plyer',        # Notifications
+        '--hidden-import=plyer.platforms', # Plyer platform specific modules
+        '--hidden-import=plyer.platforms.win', # Plyer Windows platform
         '--hidden-import=win10toast',   # Windows toast notifications
         '--hidden-import=tkinter',      # GUI support
         '--hidden-import=smtplib',      # Email support
@@ -56,6 +58,9 @@ def build_main_app():
         '--hidden-import=email.mime',   # Email MIME support
         '--hidden-import=email.mime.text', # Email text MIME
         '--hidden-import=email.mime.multipart', # Email multipart MIME
+        '--hidden-import=telegram',     # Telegram bot support
+        '--hidden-import=telegram.ext', # Telegram bot extensions
+        '--hidden-import=httpx',        # HTTP client for telegram
         '--hidden-import=asyncio',      # Async support
         '--hidden-import=logging',      # Logging support
         '--hidden-import=abc',          # Abstract base classes
@@ -76,6 +81,7 @@ def build_main_app():
         '--hidden-import=random',       # Random numbers
         '--collect-all=pystray',        # Collect all pystray dependencies
         '--collect-all=plyer',          # Collect all plyer dependencies
+        '--collect-all=telegram',       # Collect all telegram dependencies
         '--collect-all=tkinter',        # Collect all tkinter components
         '--add-data=src;src',           # Include src directory
         '--add-data=config;config',     # Include config directory

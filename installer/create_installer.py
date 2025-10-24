@@ -18,7 +18,7 @@ def get_app_files():
     # Main executable
     lookaway_exe = project_root / "dist" / "LookAway.exe"
     if lookaway_exe.exists():
-        print(f"✅ Found LookAway.exe ({lookaway_exe.stat().st_size / 1024 / 1024:.2f} MB)")
+        print(f"Found LookAway.exe ({lookaway_exe.stat().st_size / 1024 / 1024:.2f} MB)")
         with open(lookaway_exe, 'rb') as f:
             exe_data = f.read()
             # Compress the exe data
@@ -28,7 +28,7 @@ def get_app_files():
             print(f"   Compressed to {len(compressed) / 1024 / 1024:.2f} MB")
             print(f"   Base64 encoded to {len(encoded) / 1024 / 1024:.2f} MB")
     else:
-        print("❌ LookAway.exe not found! Run build_app.py first.")
+        print("ERROR: LookAway.exe not found! Run build_app.py first.")
         return None
     
     # Configuration files
@@ -37,21 +37,21 @@ def get_app_files():
         for config_file in config_dir.glob("*.json"):
             with open(config_file, 'r', encoding='utf-8') as f:
                 files_to_embed[f'config/{config_file.name}'] = f.read()
-            print(f"✅ Added config: {config_file.name}")
+            print(f"Added config: {config_file.name}")
     
     # License file
     license_file = project_root / "LICENSE"
     if license_file.exists():
         with open(license_file, 'r', encoding='utf-8') as f:
             files_to_embed['LICENSE'] = f.read()
-        print(f"✅ Added LICENSE")
+        print(f"Added LICENSE")
     
     # README
     readme_file = project_root / "README.md"
     if readme_file.exists():
         with open(readme_file, 'r', encoding='utf-8') as f:
             files_to_embed['README.txt'] = f.read()
-        print(f"✅ Added README.md")
+        print(f"Added README.md")
     
     # Scripts
     scripts_dir = project_root / "scripts"
@@ -59,7 +59,7 @@ def get_app_files():
         for script_file in scripts_dir.glob("*.bat"):
             with open(script_file, 'r', encoding='utf-8') as f:
                 files_to_embed[f'scripts/{script_file.name}'] = f.read()
-            print(f"✅ Added script: {script_file.name}")
+            print(f"Added script: {script_file.name}")
     
     return files_to_embed
 
@@ -75,7 +75,7 @@ def create_installer_with_files(output_file="windows_installer_with_files.py"):
     installer_template = Path(__file__).parent / "installer_wizard.py"
     
     if not installer_template.exists():
-        print("❌ installer_wizard.py template not found!")
+        print("ERROR: installer_wizard.py template not found!")
         return False
     
     with open(installer_template, 'r', encoding='utf-8') as f:
@@ -109,7 +109,7 @@ def create_installer_with_files(output_file="windows_installer_with_files.py"):
     # Find and replace the placeholder function
     placeholder_start = template_content.find('    def get_embedded_app_data(self):')
     if placeholder_start == -1:
-        print("❌ Could not find placeholder function in template!")
+        print("ERROR: Could not find placeholder function in template!")
         return False
     
     # Find the end of the function (look for the next function or class definition)
@@ -135,7 +135,7 @@ def create_installer_with_files(output_file="windows_installer_with_files.py"):
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(new_content)
     
-    print(f"✅ Created installer with embedded files: {output_path}")
+    print(f"Created installer with embedded files: {output_path}")
     print(f"   File size: {output_path.stat().st_size / 1024:.1f} KB")
     
     return True
@@ -149,12 +149,12 @@ def main():
     success = create_installer_with_files()
     
     if success:
-        print("\n✅ Installer with embedded files created successfully!")
+        print("\nSUCCESS: Installer with embedded files created successfully!")
         print("\nNext steps:")
         print("1. Build the installer: python -m PyInstaller --onefile windows_installer_with_files.py")
         print("2. Test the resulting executable")
     else:
-        print("\n❌ Failed to create installer with embedded files!")
+        print("\nERROR: Failed to create installer with embedded files!")
         return False
     
     return True
