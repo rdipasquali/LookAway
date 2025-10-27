@@ -96,7 +96,7 @@ class ConfigManager:
         try:
             with open(self.config_file, 'r', encoding='utf-8') as f:
                 config = json.load(f)
-            logging.info("Config file loaded successfully")
+            logging.debug("Config file loaded successfully")
             
             # Merge with default config to ensure all keys exist
             merged_config = self.default_config.copy()
