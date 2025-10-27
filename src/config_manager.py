@@ -81,16 +81,16 @@ class ConfigManager:
         import logging
         
         # Log config loading information for debugging
-        logging.info(f"Loading config from: {self.config_file}")
-        logging.info(f"Config directory: {self.config_dir}")
-        logging.info(f"Config file exists: {os.path.exists(self.config_file)}")
-        logging.info(f"Frozen (exe): {getattr(sys, 'frozen', False)}")
-        logging.info(f"Working directory: {os.getcwd()}")
+        logging.debug(f"Loading config from: {self.config_file}")
+        logging.debug(f"Config directory: {self.config_dir}")
+        logging.debug(f"Config file exists: {os.path.exists(self.config_file)}")
+        logging.debug(f"Frozen (exe): {getattr(sys, 'frozen', False)}")
+        logging.debug(f"Working directory: {os.getcwd()}")
         
         self.create_config_dir()
         
         if not os.path.exists(self.config_file):
-            logging.info("Config file not found, using defaults")
+            logging.warning("Config file not found, using defaults")
             return self.default_config.copy()
         
         try:

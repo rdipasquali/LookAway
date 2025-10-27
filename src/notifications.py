@@ -11,6 +11,11 @@ import platform
 # Set up logger for this module
 logger = logging.getLogger('notifications')
 
+# Control third-party library logging levels to prevent verbose HTTP logs
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('httpcore').setLevel(logging.WARNING)
+logging.getLogger('telegram').setLevel(logging.WARNING)
+
 try:
     from telegram import Bot
     from telegram.error import TelegramError

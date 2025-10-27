@@ -136,6 +136,13 @@ class LookAwayApp:
             ]
         )
         
+        # Control third-party library logging levels
+        # Suppress httpx HTTP request logs (used by telegram library)
+        logging.getLogger('httpx').setLevel(logging.WARNING)
+        logging.getLogger('httpcore').setLevel(logging.WARNING)
+        # Also suppress telegram library's verbose logging
+        logging.getLogger('telegram').setLevel(logging.WARNING)
+        
         # Log the setup information for debugging
         logging.info(f"Logging configured - log file: {log_file}")
         logging.info(f"Working directory: {os.getcwd()}")

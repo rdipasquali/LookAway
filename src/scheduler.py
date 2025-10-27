@@ -35,11 +35,15 @@ class EyeBreakScheduler:
         self.last_reminder_time = None
         self.snooze_until = None
         
+        log_level_name = self.config.get('logging', {}).get('level', 'INFO')
+        log_level = getattr(logging, log_level_name.upper(), logging.INFO)
+
         # Setup logging
         logging.basicConfig(
-            level=logging.INFO,
+            level=log_level,
             format='%(asctime)s - %(levelname)s - %(message)s'
         )
+
         self.logger = logging.getLogger(__name__)
     
     def start(self):
