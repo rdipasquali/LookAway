@@ -7,6 +7,14 @@ from typing import Dict, Any, Optional
 from config_manager import ConfigManager
 from notifications import NotificationManager
 
+# System tray imports
+try:
+    import pystray
+    TRAY_AVAILABLE = True
+except ImportError:
+    TRAY_AVAILABLE = False
+    pystray = None
+
 # Import exception handler functions
 try:
     from exception_handler import log_exception, log_critical_error, flush_exception_logs
@@ -257,84 +265,166 @@ class TrayController:
             logging.warning("System tray not available (pystray/PIL not installed)")
     
     def create_tray_icon(self):
-        """Create system tray icon."""
-        if not self.tray_available:
+        """Create and configure the system tray icon."""
+        if not TRAY_AVAILABLE:
+            logging.warning("pystray not available, cannot create tray icon")
             return None
-        
+            
         try:
-            # Create a simple icon (you can replace this with an actual icon file)
-            image = self.PIL_Image.new('RGB', (16, 16), color='blue')
+            # Create a simple icon using PIL
+            from PIL import Image, ImageDraw
             
-            menu = self.pystray.Menu(
-                self.pystray.MenuItem("LookAway", lambda: None, enabled=False),
-                self.pystray.Menu.SEPARATOR,
-                self.pystray.MenuItem("Status", self._show_status),
-                self.pystray.MenuItem("Snooze 5 min", lambda: self.scheduler.snooze(5)),
-                self.pystray.MenuItem("Pause/Resume", self._toggle_pause),
-                self.pystray.MenuItem("Do Not Disturb", self._toggle_dnd),
-                self.pystray.Menu.SEPARATOR,
-                self.pystray.MenuItem("Test Notifications", self._test_notifications),
-                self.pystray.MenuItem("Reload Config", self._reload_config),
-                self.pystray.Menu.SEPARATOR,
-                self.pystray.MenuItem("Exit", self._exit_application)
-            )
+            # Create a 64x64 icon with a simple eye design
+            image = Image.new('RGBA', (64, 64), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(image)
             
-            self.tray_icon = self.pystray.Icon(
-                "LookAway",
+            # Draw eye shape (circle with inner circle)
+            draw.ellipse([8, 20, 56, 44], fill=(0, 100, 200, 255))  # Blue eye
+            draw.ellipse([24, 26, 40, 38], fill=(255, 255, 255, 255))  # White center
+            draw.ellipse([28, 28, 36, 36], fill=(0, 0, 0, 255))  # Black pupil
+            
+            # Create the menu items - simplified for better compatibility
+            menu_items = [
+                pystray.MenuItem("Snooze 5min", self._snooze_5_min),
+                pystray.MenuItem("Pause/Resume", self._toggle_pause),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem("Do Not Disturb", self._toggle_dnd),
+                pystray.MenuItem("Test Notifications", self._test_notifications),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem("Reload Config", self._reload_config),
+                pystray.MenuItem("Exit", self._exit_application)
+            ]
+            
+            # Create the tray icon with both left and right click support
+            self.tray_icon = pystray.Icon(
+                "lookaway",
                 image,
-                "LookAway - Eye Break Reminder",
-                menu
+                menu=pystray.Menu(*menu_items),
+                title="LookAway - Eye Break Reminder"
             )
             
+            # For Wayland compatibility, set default action on left click
+            # Some desktop environments don't support right-click menus properly
+            self.tray_icon.default_action = self._show_status_menu
+            
+            logging.info("Tray icon created successfully")
+            print("DEBUG: Tray icon created with both left and right click support")
             return self.tray_icon
             
         except Exception as e:
-            log_critical_error(f"Error creating tray icon: {str(e)}", exc_info=True)
-            logging.error(f"Error creating tray icon: {e}")
+            logging.error(f"Failed to create tray icon: {e}")
+            print(f"DEBUG: Tray icon creation failed: {e}")
             return None
     
-    def _show_status(self):
+    def _show_about(self, icon, item):
+        """Show about information."""
+        pass  # Disabled menu item
+    
+    def _show_status(self, icon=None, item=None):
         """Show current status."""
         status = self.scheduler.get_status()
-        status_text = f"""
-LookAway Status:
-- Running: {status['is_running']}
-- Paused: {status['is_paused']}
-- Do Not Disturb: {status['do_not_disturb']}
-- Total Reminders: {status['reminder_count']}
-- Interval: {status['interval_minutes']} minutes
-- Enabled Notifications: {', '.join(status['enabled_notifications'])}
-- Sleep Time: {status['is_sleep_time']}
-"""
-        print(status_text)  # You could implement a proper dialog here
-    
-    def _toggle_pause(self):
+        status_text = f"""LookAway Status:
+
+Running: {status['is_running']}
+Paused: {status['is_paused']}
+Do Not Disturb: {status['do_not_disturb']}
+Total Reminders: {status['reminder_count']}
+Interval: {status['interval_minutes']} minutes
+Enabled Notifications: {', '.join(status['enabled_notifications'])}
+Sleep Time: {status['is_sleep_time']}"""
+        
+        # Show GUI dialog
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+            
+            # Create a temporary root window (hidden)
+            temp_root = tk.Tk()
+            temp_root.withdraw()
+            
+            # Show status dialog
+            messagebox.showinfo("LookAway Status", status_text)
+            
+            # Clean up
+            temp_root.destroy()
+            
+        except Exception as e:
+            # Fallback to console output
+            print(status_text)
+            print(f"GUI dialog error: {e}")
+        
+        logging.info(f"Status requested via tray: {status}")
+
+    def _snooze_5_min(self, icon, item):
+        """Snooze for 5 minutes."""
+        print("DEBUG: Snooze menu item clicked!")
+        self.scheduler.snooze(5)
+        logging.info("Snoozed for 5 minutes via tray")
+
+    def _toggle_pause(self, icon, item):
         """Toggle pause state."""
+        print("DEBUG: Pause/Resume menu item clicked!")
         if self.scheduler.is_paused:
             self.scheduler.resume()
+            logging.info("Resumed via tray")
         else:
             self.scheduler.pause()
-    
-    def _toggle_dnd(self):
+            logging.info("Paused via tray")
+
+    def _toggle_dnd(self, icon, item):
         """Toggle Do Not Disturb mode."""
-        self.scheduler.toggle_do_not_disturb()
-    
-    def _test_notifications(self):
+        print("DEBUG: Do Not Disturb menu item clicked!")
+        new_state = self.scheduler.toggle_do_not_disturb()
+        logging.info(f"Do Not Disturb {'enabled' if new_state else 'disabled'} via tray")
+
+    def _test_notifications(self, icon, item):
         """Test all notification methods."""
+        print("DEBUG: Test Notifications menu item clicked!")
         results = self.scheduler.notification_manager.test_all_connections()
         print(f"Notification test results: {results}")
-    
-    def _reload_config(self):
+        logging.info(f"Notification test via tray: {results}")
+
+    def _reload_config(self, icon, item):
         """Reload configuration."""
+        print("DEBUG: Reload Config menu item clicked!")
         self.scheduler.reload_config()
-    
-    def _exit_application(self):
+        logging.info("Config reloaded via tray")
+
+    def _show_status_menu(self, icon, item=None):
+        """Show status menu on left click for Wayland compatibility."""
+        print("DEBUG: Left click on tray icon - showing status")
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+            
+            # Create a simple status window
+            root = tk.Tk()
+            root.withdraw()  # Hide the main window
+            
+            status = "Paused" if self.scheduler.is_paused else "Running"
+            dnd_status = "On" if hasattr(self.scheduler, 'do_not_disturb') and self.scheduler.do_not_disturb else "Off"
+            
+            message = f"""LookAway Status:
+            
+Status: {status}
+Do Not Disturb: {dnd_status}
+            
+Right-click the tray icon for more options."""
+            
+            messagebox.showinfo("LookAway Status", message)
+            root.destroy()
+            
+        except Exception as e:
+            print(f"DEBUG: Failed to show status menu: {e}")
+            logging.error(f"Failed to show status menu: {e}")
+
+    def _exit_application(self, icon, item):
         """Exit the application."""
+        print("DEBUG: Exit menu item clicked!")
+        logging.info("Exit requested via tray")
         self.scheduler.stop()
         if self.tray_icon:
             self.tray_icon.stop()
-
-
 # Quick test function
 def test_scheduler():
     """Quick test of the scheduler functionality."""

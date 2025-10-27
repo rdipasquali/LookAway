@@ -376,13 +376,19 @@ class LookAwayApp:
     
     def _signal_handler(self, signum, frame):
         """Handle system signals for graceful shutdown."""
-        self.logger.info(f"Received signal {signum}, shutting down...")
-        if self.scheduler:
-            self.scheduler.stop()
-        if self.tray_controller and self.tray_controller.tray_icon:
-            self.tray_controller.tray_icon.stop()
-        self._cleanup()
-        sys.exit(0)
+        # Avoid logging during signal handling as it can cause issues with pystray
+        print(f"Received signal {signum}, shutting down...")
+        try:
+            if self.scheduler:
+                self.scheduler.stop()
+            # Don't try to stop tray icon from signal handler - let it exit naturally
+            self._cleanup()
+        except Exception as e:
+            print(f"Error during shutdown: {e}")
+        finally:
+            # Use os._exit to avoid cleanup conflicts with pystray
+            import os
+            os._exit(0)
     
     def _cleanup(self):
         """Cleanup resources before exit."""
