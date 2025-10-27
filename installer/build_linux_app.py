@@ -49,7 +49,10 @@ def build_linux_app(python_executable=None):
         '--windowed',                   # No console window (for GUI mode)
         '--name=lookaway',              # Output name (lowercase for Linux convention)
         '--hidden-import=pystray',      # System tray support
+        '--hidden-import=pystray._base',# Pystray base module
         '--hidden-import=PIL',          # Image support
+        '--hidden-import=PIL.Image',    # PIL Image module
+        '--hidden-import=PIL.ImageDraw', # PIL ImageDraw module
         '--hidden-import=plyer',        # Notifications
         '--hidden-import=plyer.platforms', # Plyer platform specific modules
         '--hidden-import=plyer.platforms.linux', # Plyer Linux platform
@@ -81,9 +84,11 @@ def build_linux_app(python_executable=None):
         '--hidden-import=argparse',     # Argument parsing
         '--hidden-import=random',       # Random numbers
         '--collect-all=pystray',        # Collect all pystray dependencies
+        '--collect-all=PIL',            # Collect all PIL/Pillow dependencies
         '--collect-all=plyer',          # Collect all plyer dependencies
         '--collect-all=telegram',       # Collect all telegram dependencies
         '--collect-all=tkinter',        # Collect all tkinter components
+        f'--additional-hooks-dir={project_root}',  # Use our custom hooks
         '--add-data=src:src',           # Include src directory (Linux syntax)
         '--add-data=config:config',     # Include config directory (Linux syntax)
         str(main_py)

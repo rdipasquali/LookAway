@@ -787,7 +787,7 @@ Click 'Install' to begin the installation."""
         config_dir = install_dir / "config"
         config_dir.mkdir(exist_ok=True)
         
-        # Create settings
+        # Create complete settings - SAME structure as Windows
         settings = {
             "reminder_interval_minutes": self.config['reminder_interval'],
             "break_duration": 20,
@@ -803,6 +803,25 @@ Click 'Install' to begin the installation."""
                 "telegram": self.config['telegram_enabled']
             },
             "snooze_minutes": 5,
+            "do_not_disturb": False,
+            "first_run": False,
+            "messages": [
+                "Time for a break! Look away from your screen for 20 seconds.",
+                "Take a moment to rest your eyes. Look at something 20 feet away.",
+                "Eye break time! Blink several times and look into the distance.",
+                "Give your eyes a rest. Focus on something far away for a moment.",
+                "Break time! Close your eyes for a few seconds or look outside."
+            ],
+            "break_types": {
+                "quick_break": {
+                    "duration_seconds": 20,
+                    "description": "Quick eye rest - look away for 20 seconds"
+                },
+                "long_break": {
+                    "duration_seconds": 300,
+                    "description": "Long break - step away from computer for 5 minutes"
+                }
+            },
             "logging": {
                 "level": "INFO",
                 "max_log_files": 5,
@@ -812,11 +831,11 @@ Click 'Install' to begin the installation."""
         
         # Add email configuration if enabled
         if self.config['email_enabled'] and 'email_settings' in self.config:
-            settings["email"] = self.config['email_settings']
+            settings["email_settings"] = self.config['email_settings']
         
-        # Add telegram configuration if enabled
+        # Add telegram configuration if enabled  
         if self.config['telegram_enabled'] and 'telegram_settings' in self.config:
-            settings["telegram"] = self.config['telegram_settings']
+            settings["telegram_settings"] = self.config['telegram_settings']
         
         # Write settings file
         settings_file = config_dir / "settings.json"
@@ -936,6 +955,12 @@ echo "LookAway has been uninstalled."
     def installation_complete(self):
         """Called when installation is complete"""
         self.install_progress_bar.stop()
+        
+        # Re-enable navigation buttons
+        self.next_btn.config(state='normal')
+        self.back_btn.config(state='normal') 
+        self.cancel_btn.config(state='normal')
+        
         self.current_step += 1
         self.update_progress()
         self.show_current_step()
