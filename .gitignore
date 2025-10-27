@@ -207,3 +207,4 @@ marimo/_lsp/
 __marimo__/
 
 .vscode/
+installer/linux_installer_with_files.py

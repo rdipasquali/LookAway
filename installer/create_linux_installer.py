@@ -91,8 +91,8 @@ def create_installer_with_files(output_file="linux_installer_with_files.py"):
     
     for file_path, file_data in files_data.items():
         if file_path == 'lookaway':
-            # Special handling for compressed binary data
-            embedded_files_code += f"            '{file_path}': base64.b64decode('''{file_data}'''),\n"
+            # Special handling for compressed binary data - keep as base64 string
+            embedded_files_code += f"            '{file_path}': '''{file_data}''',\n"
         else:
             # Text files - escape properly
             escaped_data = file_data.replace('\\', '\\\\').replace("'", "\\'").replace('\n', '\\n')
@@ -101,8 +101,10 @@ def create_installer_with_files(output_file="linux_installer_with_files.py"):
     embedded_files_code += "        }\n"
     embedded_files_code += "        \n"
     embedded_files_code += "        # Decompress the exe if it's compressed\n"
-    embedded_files_code += "        if 'lookaway' in files and isinstance(files['lookaway'], bytes):\n"
-    embedded_files_code += "            files['lookaway'] = gzip.decompress(files['lookaway'])\n"
+    embedded_files_code += "        if 'lookaway' in files and isinstance(files['lookaway'], str):\n"
+    embedded_files_code += "            # First base64 decode, then gzip decompress\n"
+    embedded_files_code += "            compressed_data = base64.b64decode(files['lookaway'])\n"
+    embedded_files_code += "            files['lookaway'] = gzip.decompress(compressed_data)\n"
     embedded_files_code += "        \n"
     embedded_files_code += "        return files"
     

@@ -731,9 +731,8 @@ Click 'Install' to begin the installation."""
                                                  "Please use the create_linux_installer.py script to create a proper installer."))
                     return
                 
-                # Decode and decompress the application
-                compressed_data = base64.b64decode(app_data['lookaway'])
-                app_binary = gzip.decompress(compressed_data)
+                # Get the application binary (already decompressed by get_embedded_app_data)
+                app_binary = app_data['lookaway']
                 
                 # Write the application
                 app_path = install_dir / "lookaway"
