@@ -25,6 +25,16 @@ def main():
     print(f"Installer directory: {installer_dir}")
     print(f"Distribution directory: {dist_dir}")
     
+    # Check for virtual environment
+    venv_python = Path.home() / "lookaway_build_env" / "bin" / "python3"
+    if venv_python.exists():
+        print(f"SUCCESS: Using virtual environment Python at {venv_python}")
+        python_executable = str(venv_python)
+    else:
+        print("WARNING: Virtual environment not found, using system Python")
+        print("This may fail due to externally-managed-environment restrictions")
+        python_executable = sys.executable
+    
     # Ensure we're in the installer directory
     os.chdir(installer_dir)
     
@@ -35,7 +45,7 @@ def main():
         print(f"{'='*40}")
         
         result = subprocess.run([
-            sys.executable, "build_linux_app.py"
+            python_executable, "build_linux_app.py"
         ], capture_output=True, text=True)
         
         if result.returncode != 0:
@@ -46,43 +56,42 @@ def main():
         
         print("SUCCESS: lookaway executable built successfully")
         
-        # Step 2: Create Linux installer with embedded files
+        # Step 2: Create installer with embedded files
         print(f"\n{'='*40}")
-        print("Step 2: Creating Linux installer with embedded files")
+        print("Step 2: Creating installer with embedded files")
         print(f"{'='*40}")
         
         result = subprocess.run([
-            sys.executable, "create_linux_installer.py"
+            python_executable, "create_linux_installer.py"
         ], capture_output=True, text=True)
         
         if result.returncode != 0:
-            print("ERROR: Failed to create Linux installer with embedded files")
+            print("ERROR: Failed to create installer with embedded files")
             print("STDERR:", result.stderr)
             print("STDOUT:", result.stdout)
             return False
         
         print("SUCCESS: Linux installer with embedded files created")
         
-        # Step 3: Build the Linux installer executable
+        # Step 3: Build the unified Linux installer executable
         print(f"\n{'='*40}")
-        print("Step 3: Building Linux installer executable")
+        print("Step 3: Building unified Linux installer executable")
         print(f"{'='*40}")
         
-        # Check if installer file exists
-        installer_file = installer_dir / "linux_installer_with_files.py"
-        if not installer_file.exists():
-            print("ERROR: Linux installer file not found. This should be created by create_linux_installer.py")
-            return False
-        
         result = subprocess.run([
-            sys.executable, "-m", "PyInstaller", 
+            python_executable, "-m", "PyInstaller", 
             "--onefile", 
             "--name=lookaway-installer-linux",
-            "--hidden-import=tkinter", "--collect-submodules=tkinter",
-            "--hidden-import=subprocess", "--hidden-import=shutil",
-            "--hidden-import=gzip", "--hidden-import=base64",
-            "--hidden-import=json", "--hidden-import=pathlib",
-            "--add-data=../LICENSE:.",  # Include license file
+            "--hidden-import=tkinter", 
+            "--collect-submodules=tkinter",
+            "--hidden-import=subprocess", 
+            "--hidden-import=shutil",
+            "--hidden-import=gzip", 
+            "--hidden-import=base64",
+            "--hidden-import=json", 
+            "--hidden-import=pathlib",
+            "--hidden-import=threading",
+            "--add-data=../LICENSE:.",
             "linux_installer_with_files.py"
         ], capture_output=True, text=True)
         
@@ -111,7 +120,7 @@ def main():
         # Clean up installer directory
         cleanup_items = [
             installer_dir / "dist",
-            installer_dir / "build", 
+            installer_dir / "build",
             installer_dir / "linux_installer_with_files.py"
         ]
         

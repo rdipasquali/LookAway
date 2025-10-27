@@ -10,9 +10,12 @@ import subprocess
 import shutil
 from pathlib import Path
 
-def build_linux_app():
+def build_linux_app(python_executable=None):
     """Build the main LookAway application for Linux using PyInstaller."""
     print("Building LookAway for Linux...")
+    
+    if python_executable is None:
+        python_executable = sys.executable
     
     # Get project root
     script_dir = Path(__file__).parent
@@ -41,7 +44,7 @@ def build_linux_app():
     
     # Build command with proper options for Linux compatibility
     cmd = [
-        sys.executable, '-m', 'PyInstaller',
+        python_executable, '-m', 'PyInstaller',
         '--onefile',                    # Single executable file
         '--windowed',                   # No console window (for GUI mode)
         '--name=lookaway',              # Output name (lowercase for Linux convention)
@@ -206,17 +209,50 @@ def main():
         print("\nSome dependencies are missing. Install them and try again.")
         return False
     
-    # Check if PyInstaller is available
-    try:
-        subprocess.run([sys.executable, '-m', 'PyInstaller', '--version'], 
-                      capture_output=True, check=True)
-        print("SUCCESS: PyInstaller is available")
-    except subprocess.CalledProcessError:
-        print("ERROR: PyInstaller not found! Installing...")
-        subprocess.run([sys.executable, '-m', 'pip', 'install', 'pyinstaller'], check=True)
+    # Check for virtual environment or try to use one
+    venv_python = None
+    venv_paths = [
+        os.path.expanduser("~/lookaway_build_env/bin/python3"),
+        os.path.expanduser("~/lookaway_build_env/bin/python"),
+        os.path.join(os.path.dirname(__file__), "..", "venv_linux", "bin", "python3"),
+        os.path.join(os.path.dirname(__file__), "..", ".venv", "bin", "python3")
+    ]
+    
+    for venv_path in venv_paths:
+        if os.path.exists(venv_path):
+            try:
+                # Test if PyInstaller is available in this venv
+                result = subprocess.run([venv_path, '-m', 'PyInstaller', '--version'], 
+                                      capture_output=True, text=True)
+                if result.returncode == 0:
+                    venv_python = venv_path
+                    print(f"SUCCESS: Using virtual environment Python at {venv_python}")
+                    print(f"PyInstaller version: {result.stdout.strip()}")
+                    break
+            except Exception:
+                continue
+    
+    if not venv_python:
+        # Fall back to system Python but warn about externally-managed-environment issue
+        print("WARNING: No virtual environment with PyInstaller found.")
+        print("This may fail on externally-managed Python environments.")
+        print("Consider creating a virtual environment:")
+        print("  python3 -m venv ~/lookaway_build_env")
+        print("  source ~/lookaway_build_env/bin/activate")
+        print("  pip install pyinstaller")
+        
+        try:
+            subprocess.run([sys.executable, '-m', 'PyInstaller', '--version'], 
+                          capture_output=True, check=True)
+            print("SUCCESS: PyInstaller is available in system Python")
+            venv_python = sys.executable
+        except subprocess.CalledProcessError:
+            print("ERROR: PyInstaller not found! Cannot proceed without virtual environment.")
+            print("Please set up a virtual environment with PyInstaller installed.")
+            return False
     
     # Build the application
-    if build_linux_app():
+    if build_linux_app(venv_python):
         print("\n" + "=" * 60)
         print("Testing built executable...")
         print("=" * 60)

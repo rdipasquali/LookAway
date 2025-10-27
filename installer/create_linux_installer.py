@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
-Linux Installer Creation Script
-Creates a Linux installer with embedded files similar to the Windows version.
+Linux Resource Embedder - Creates installer with actual application files.
+This embeds the lookaway executable and other necessary files into the installer.
 """
 
 import os
-import gzip
+import sys
 import base64
+import gzip
 from pathlib import Path
 
-def get_linux_app_files():
-    """Get application files for Linux installer."""
+def get_app_files():
+    """Get the application files to embed."""
     project_root = Path(__file__).parent.parent
     files_to_embed = {}
     
@@ -45,28 +46,28 @@ def get_linux_app_files():
             files_to_embed['LICENSE'] = f.read()
         print(f"Added LICENSE")
     
-    # README file
+    # README
     readme_file = project_root / "README.md"
     if readme_file.exists():
         with open(readme_file, 'r', encoding='utf-8') as f:
-            files_to_embed['README.md'] = f.read()
+            files_to_embed['README.txt'] = f.read()
         print(f"Added README.md")
     
-    # Linux startup scripts
+    # Scripts
     scripts_dir = project_root / "scripts"
     if scripts_dir.exists():
-        for script_file in scripts_dir.glob("*linux*"):
+        for script_file in scripts_dir.glob("*.sh"):
             with open(script_file, 'r', encoding='utf-8') as f:
                 files_to_embed[f'scripts/{script_file.name}'] = f.read()
             print(f"Added script: {script_file.name}")
     
     return files_to_embed
 
-def create_linux_installer_with_files(output_file="linux_installer_with_files.py"):
-    """Create Linux installer file with embedded files."""
+def create_installer_with_files(output_file="linux_installer_with_files.py"):
+    """Create installer file with embedded files."""
     
     # Get application files
-    files_data = get_linux_app_files()
+    files_data = get_app_files()
     if files_data is None:
         return False
     
@@ -82,68 +83,40 @@ def create_linux_installer_with_files(output_file="linux_installer_with_files.py
     
     # Create the embedded files function
     embedded_files_code = "    def get_embedded_app_data(self):\n"
-    embedded_files_code += "        \"\"\"Get embedded application data.\"\"\"\n"
-    embedded_files_code += "        return {\n"
+    embedded_files_code += "        \"\"\"Get embedded application data\"\"\"\n"
+    embedded_files_code += "        import base64\n"
+    embedded_files_code += "        import gzip\n"
+    embedded_files_code += "        \n"
+    embedded_files_code += "        files = {\n"
     
-    for filename, data in files_data.items():
-        # Escape the data properly for Python string
-        escaped_data = repr(data)
-        embedded_files_code += f"            {repr(filename)}: {escaped_data},\n"
+    for file_path, file_data in files_data.items():
+        if file_path == 'lookaway':
+            # Special handling for compressed binary data
+            embedded_files_code += f"            '{file_path}': base64.b64decode('''{file_data}'''),\n"
+        else:
+            # Text files - escape properly
+            escaped_data = file_data.replace('\\', '\\\\').replace("'", "\\'").replace('\n', '\\n')
+            embedded_files_code += f"            '{file_path}': '''{escaped_data}''',\n"
     
     embedded_files_code += "        }\n"
-    
-    # Also update the get_license_text method with actual license
-    if 'LICENSE' in files_data:
-        license_method = "    def get_license_text(self):\n"
-        license_method += "        \"\"\"Get license text from embedded data.\"\"\"\n"
-        license_method += f"        return {repr(files_data['LICENSE'])}\n"
-        
-        # Replace the placeholder license method
-        license_start = template_content.find('    def get_license_text(self):')
-        if license_start != -1:
-            # Find the end of the method
-            lines = template_content[license_start:].split('\n')
-            method_end = license_start
-            indent_level = None
-            
-            for i, line in enumerate(lines):
-                if i == 0:  # First line is the method definition
-                    continue
-                
-                if line.strip() == '':  # Empty line
-                    continue
-                
-                current_indent = len(line) - len(line.lstrip())
-                
-                if indent_level is None and line.strip():
-                    indent_level = current_indent
-                
-                if line.strip() and current_indent <= 4:  # Back to class level or less
-                    method_end = license_start + len('\n'.join(lines[:i]))
-                    break
-            else:
-                # Reached end of file
-                method_end = len(template_content)
-            
-            # Replace the method
-            template_content = (template_content[:license_start] + 
-                            license_method + '\n' +
-                            template_content[method_end:])
+    embedded_files_code += "        \n"
+    embedded_files_code += "        # Decompress the exe if it's compressed\n"
+    embedded_files_code += "        if 'lookaway' in files and isinstance(files['lookaway'], bytes):\n"
+    embedded_files_code += "            files['lookaway'] = gzip.decompress(files['lookaway'])\n"
+    embedded_files_code += "        \n"
+    embedded_files_code += "        return files"
     
     # Find and replace the placeholder function
     placeholder_start = template_content.find('    def get_embedded_app_data(self):')
-    
     if placeholder_start == -1:
         print("ERROR: Could not find placeholder function in template!")
         return False
     
-    # Find the end of the placeholder function
+    # Find the end of the function (look for the next function or class definition)
     lines = template_content[placeholder_start:].split('\n')
-    function_end = len(lines)
-    
-    for i, line in enumerate(lines[1:], 1):  # Skip the function definition line
-        if line.strip() and not line.startswith('        ') and not line.startswith('\t\t'):
-            # Found a line that's not indented as part of the function
+    function_end = 1
+    for i, line in enumerate(lines[1:], 1):
+        if line.strip() and not line.startswith('    ') and not line.startswith('\t'):
             function_end = i
             break
         elif line.strip().startswith('def ') and not line.startswith('        '):
@@ -162,31 +135,30 @@ def create_linux_installer_with_files(output_file="linux_installer_with_files.py
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(new_content)
     
-    print(f"Created Linux installer with embedded files: {output_path}")
+    print(f"Created installer with embedded files: {output_path}")
     print(f"   File size: {output_path.stat().st_size / 1024:.1f} KB")
     
-    return output_path
+    return True
 
 def main():
-    """Main function."""
+    """Main execution."""
     print("=" * 60)
     print("Creating Linux Installer with Embedded Files")
     print("=" * 60)
     
-    success = create_linux_installer_with_files()
+    success = create_installer_with_files()
     
     if success:
         print("\nSUCCESS: Linux installer with embedded files created successfully!")
         print("\nNext steps:")
         print("1. Build the installer: python -m PyInstaller --onefile linux_installer_with_files.py")
-        print("2. Test the resulting executable on a Linux system")
-        print("3. Distribute the installer executable")
+        print("2. Test the resulting executable")
     else:
-        print("\nERROR: Failed to create Linux installer with embedded files!")
+        print("\nERROR: Failed to create installer with embedded files!")
         return False
     
     return True
 
 if __name__ == "__main__":
     success = main()
-    exit(0 if success else 1)
+    sys.exit(0 if success else 1)

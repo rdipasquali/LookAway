@@ -1,825 +1,133 @@
 #!/usr/bin/env python3
 """
-Linux Installer Wizard for LookAway Eye Break Reminder
-
-Cross-platform GUI installer that works on Linux systems with tkinter support.
-Provides step-by-step installation with configuration options.
+Linux Installation Wizard for LookAway Eye Break Reminder
+Based on the Windows installer structure - same functionality, Linux implementation.
 """
 
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox, scrolledtext
 import os
 import sys
-import gzip
-import base64
-import json
 import subprocess
 import shutil
+import tempfile
+import json
+import threading
 import stat
 from pathlib import Path
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog, scrolledtext
-import tempfile
+import base64
+import gzip
 
-class LinuxLookAwayInstaller:
-    """Linux installer GUI for LookAway application."""
-    
+
+class LinuxInstallerWizard:
     def __init__(self):
+        print("DEBUG: LinuxInstallerWizard.__init__() started")
+        
         self.root = tk.Tk()
-        self.root.title("LookAway - Linux Installer")
-        self.root.geometry("800x600")
-        self.root.resizable(True, True)
+        self.root.title("LookAway Installation Wizard")
+        self.root.geometry("600x500")
+        self.root.resizable(False, False)
         
-        # Configure style
-        self.setup_styles()
+        # Center the window
+        self.root.update_idletasks()
+        x = (self.root.winfo_screenwidth() // 2) - (600 // 2)
+        y = (self.root.winfo_screenheight() // 2) - (500 // 2)
+        self.root.geometry(f"600x500+{x}+{y}")
         
-        # Installation state
-        self.install_dir = None
-        self.config_data = {}
+        # Installation configuration - SAME as Windows but with Linux defaults
+        self.config = {
+            'install_path': str(Path.home() / ".local" / "share" / "LookAway"),
+            'create_desktop_shortcut': True,
+            'create_start_menu': True,  # Will be application menu on Linux
+            'auto_start': False,
+            'launch_after_install': True,
+            'reminder_interval': 20,
+            'notification_method': 'desktop',
+            'email_enabled': False,
+            'telegram_enabled': False,
+            'sleep_start': '22:00',
+            'sleep_end': '07:00'
+        }
+        
+        # Current step
         self.current_step = 0
-        self.steps = []
-        
-        # Initialize installation steps
-        self.setup_installation_steps()
-        
-        # Create main UI
-        self.setup_ui()
-        
-        # Show first step
-        self.show_step(0)
-    
-    def setup_styles(self):
-        """Configure UI styles for Linux."""
-        style = ttk.Style()
-        
-        # Try to use a native theme if available
-        available_themes = style.theme_names()
-        if 'clam' in available_themes:
-            style.theme_use('clam')
-        elif 'alt' in available_themes:
-            style.theme_use('alt')
-        
-        # Configure button styles
-        style.configure('Title.TLabel', font=('Arial', 16, 'bold'))
-        style.configure('Heading.TLabel', font=('Arial', 12, 'bold'))
-        style.configure('Install.TButton', padding=(20, 10))
-    
-    def setup_installation_steps(self):
-        """Define installation steps."""
-        self.steps = [
-            {
-                'title': 'Welcome to LookAway Installer',
-                'function': self.create_welcome_page
-            },
-            {
-                'title': 'License Agreement',
-                'function': self.create_license_page
-            },
-            {
-                'title': 'Choose Installation Directory',
-                'function': self.create_directory_page
-            },
-            {
-                'title': 'Configure Notifications',
-                'function': self.create_notification_page
-            },
-            {
-                'title': 'Email Configuration',
-                'function': self.create_email_config_page
-            },
-            {
-                'title': 'Telegram Configuration',
-                'function': self.create_telegram_config_page
-            },
-            {
-                'title': 'System Integration',
-                'function': self.create_integration_page
-            },
-            {
-                'title': 'Installing Files',
-                'function': self.create_install_page
-            },
-            {
-                'title': 'Installation Complete',
-                'function': self.create_complete_page
-            }
+        # Base steps - additional steps will be added dynamically (SAME as Windows)
+        self.base_steps = [
+            self.create_welcome_page,
+            self.create_license_page,
+            self.create_installation_path_page,
+            self.create_configuration_page,
+            self.create_options_page,
         ]
-    
-    def setup_ui(self):
-        """Create the main UI layout."""
-        # Main container
+        self.final_steps = [
+            self.create_installation_page,
+            self.create_completion_page
+        ]
+        # Initial steps (will be rebuilt when configuration changes)
+        self.steps = self.base_steps + self.final_steps
+        
+        # Create main frame
         self.main_frame = ttk.Frame(self.root, padding="20")
         self.main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Create navigation frame
+        self.nav_frame = ttk.Frame(self.root)
+        self.nav_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), padx=20, pady=10)
+        
+        self.back_btn = ttk.Button(self.nav_frame, text="< Back", command=self.go_back, state="disabled")
+        self.back_btn.pack(side=tk.LEFT)
+        
+        self.next_btn = ttk.Button(self.nav_frame, text="Next >", command=self.go_next)
+        self.next_btn.pack(side=tk.RIGHT)
+        
+        self.cancel_btn = ttk.Button(self.nav_frame, text="Cancel", command=self.cancel_installation)
+        self.cancel_btn.pack(side=tk.RIGHT, padx=(0, 10))
+        
+        # Progress bar
+        self.progress_frame = ttk.Frame(self.root)
+        self.progress_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), padx=20, pady=5)
+        
+        self.progress_var = tk.DoubleVar()
+        self.progress_bar = ttk.Progressbar(self.progress_frame, variable=self.progress_var, maximum=100)
+        self.progress_bar.pack(fill=tk.X)
         
         # Configure grid weights
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
-        self.main_frame.columnconfigure(0, weight=1)
-        self.main_frame.rowconfigure(1, weight=1)
         
-        # Title
-        self.title_label = ttk.Label(
-            self.main_frame, 
-            text="LookAway Installer", 
-            style='Title.TLabel'
-        )
-        self.title_label.grid(row=0, column=0, pady=(0, 20))
-        
-        # Content area
-        self.content_frame = ttk.Frame(self.main_frame)
-        self.content_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        self.content_frame.columnconfigure(0, weight=1)
-        self.content_frame.rowconfigure(0, weight=1)
-        
-        # Navigation buttons
-        self.button_frame = ttk.Frame(self.main_frame)
-        self.button_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(20, 0))
-        
-        self.back_button = ttk.Button(
-            self.button_frame, 
-            text="← Back", 
-            command=self.previous_step
-        )
-        self.back_button.pack(side=tk.LEFT)
-        
-        self.next_button = ttk.Button(
-            self.button_frame, 
-            text="Next →", 
-            command=self.next_step,
-            style='Install.TButton'
-        )
-        self.next_button.pack(side=tk.RIGHT)
-        
-        self.cancel_button = ttk.Button(
-            self.button_frame, 
-            text="Cancel", 
-            command=self.cancel_installation
-        )
-        self.cancel_button.pack(side=tk.RIGHT, padx=(0, 10))
+        # Show first page
+        self.update_progress()
+        self.show_current_step()
     
-    def show_step(self, step_index):
-        """Display a specific installation step."""
-        if 0 <= step_index < len(self.steps):
-            self.current_step = step_index
-            
-            # Clear content area
-            for widget in self.content_frame.winfo_children():
-                widget.destroy()
-            
-            # Update title
-            step = self.steps[step_index]
-            self.title_label.config(text=step['title'])
-            
-            # Create step content
-            step['function']()
-            
-            # Update navigation buttons
-            self.back_button.config(state='normal' if step_index > 0 else 'disabled')
-            
-            if step_index == len(self.steps) - 1:
-                self.next_button.config(text="Finish", command=self.finish_installation)
-            else:
-                self.next_button.config(text="Next →", command=self.next_step)
-    
-    def create_welcome_page(self):
-        """Create welcome page."""
-        welcome_text = """Welcome to the LookAway Eye Break Reminder installer for Linux!
-
-LookAway helps protect your eye health by sending periodic reminders to take breaks from screen time, following the 20-20-20 rule and other eye health best practices.
-
-Features:
-• Desktop notifications using your system's notification daemon
-• Email reminders via SMTP
-• Telegram notifications via bot integration
-• Customizable break intervals and messages
-• System tray integration (on supported desktops)
-• Automatic startup configuration
-• Sleep hours awareness
-
-This installer will guide you through the setup process and help configure the application for your system.
-
-Click 'Next' to continue with the installation."""
-        
-        text_widget = scrolledtext.ScrolledText(
-            self.content_frame,
-            wrap=tk.WORD,
-            height=15,
-            font=('Arial', 11)
-        )
-        text_widget.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        text_widget.insert('1.0', welcome_text)
-        text_widget.config(state='disabled')
-    
-    def create_license_page(self):
-        """Create license agreement page."""
-        license_frame = ttk.Frame(self.content_frame)
-        license_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        license_frame.columnconfigure(0, weight=1)
-        license_frame.rowconfigure(1, weight=1)
-        
-        ttk.Label(
-            license_frame,
-            text="License Agreement",
-            style='Heading.TLabel'
-        ).grid(row=0, column=0, pady=(0, 10))
-        
-        # License text
-        license_text = self.get_license_text()
-        
-        text_widget = scrolledtext.ScrolledText(
-            license_frame,
-            wrap=tk.WORD,
-            height=20,
-            font=('Courier', 10)
-        )
-        text_widget.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        text_widget.insert('1.0', license_text)
-        text_widget.config(state='disabled')
-        
-        # Agreement checkbox
-        self.license_agreed = tk.BooleanVar()
-        agreement_frame = ttk.Frame(license_frame)
-        agreement_frame.grid(row=2, column=0, pady=(10, 0))
-        
-        ttk.Checkbutton(
-            agreement_frame,
-            text="I accept the terms of the license agreement",
-            variable=self.license_agreed,
-            command=self.update_next_button
-        ).pack(anchor='w')
-    
-    def create_directory_page(self):
-        """Create installation directory selection page."""
-        dir_frame = ttk.Frame(self.content_frame)
-        dir_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        dir_frame.columnconfigure(1, weight=1)
-        
-        ttk.Label(
-            dir_frame,
-            text="Choose Installation Directory",
-            style='Heading.TLabel'
-        ).grid(row=0, column=0, columnspan=3, pady=(0, 20))
-        
-        ttk.Label(dir_frame, text="Install to:").grid(row=1, column=0, sticky='w', pady=5)
-        
-        self.install_dir_var = tk.StringVar()
-        default_dir = os.path.expanduser("~/.local/share/LookAway")
-        self.install_dir_var.set(default_dir)
-        
-        dir_entry = ttk.Entry(dir_frame, textvariable=self.install_dir_var, width=50)
-        dir_entry.grid(row=1, column=1, sticky=(tk.W, tk.E), padx=(10, 5))
-        
-        ttk.Button(
-            dir_frame,
-            text="Browse",
-            command=self.browse_install_dir
-        ).grid(row=1, column=2, padx=(5, 0))
-        
-        # Info text
-        info_text = """The application will be installed to the selected directory.
-        
-Default location: ~/.local/share/LookAway
-This follows Linux filesystem hierarchy standards and doesn't require administrator privileges.
-
-You can also choose:
-• /opt/LookAway (requires sudo)
-• ~/Applications/LookAway (user applications folder)
-• Any custom directory of your choice
-
-The installer will create the directory if it doesn't exist."""
-        
-        info_label = ttk.Label(dir_frame, text=info_text, justify='left')
-        info_label.grid(row=2, column=0, columnspan=3, pady=(20, 0), sticky='w')
-    
-    def create_notification_page(self):
-        """Create notification configuration page."""
-        notif_frame = ttk.Frame(self.content_frame)
-        notif_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        ttk.Label(
-            notif_frame,
-            text="Configure Notification Methods",
-            style='Heading.TLabel'
-        ).grid(row=0, column=0, pady=(0, 20))
-        
-        # Desktop notifications
-        self.desktop_enabled = tk.BooleanVar(value=True)
-        desktop_frame = ttk.LabelFrame(notif_frame, text="Desktop Notifications", padding="10")
-        desktop_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5)
-        
-        ttk.Checkbutton(
-            desktop_frame,
-            text="Enable desktop notifications",
-            variable=self.desktop_enabled
-        ).pack(anchor='w')
-        
-        ttk.Label(
-            desktop_frame,
-            text="Uses your desktop's notification system (notify-send, dunst, etc.)",
-            font=('Arial', 9)
-        ).pack(anchor='w', pady=(5, 0))
-        
-        # Email notifications
-        self.email_enabled = tk.BooleanVar()
-        email_frame = ttk.LabelFrame(notif_frame, text="Email Notifications", padding="10")
-        email_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=5)
-        
-        ttk.Checkbutton(
-            desktop_frame,
-            text="Enable email notifications",
-            variable=self.email_enabled,
-            command=self.update_step_visibility
-        ).pack(anchor='w')
-        
-        ttk.Label(
-            email_frame,
-            text="Send reminder emails via SMTP (Gmail, Outlook, etc.)",
-            font=('Arial', 9)
-        ).pack(anchor='w', pady=(5, 0))
-        
-        # Telegram notifications
-        self.telegram_enabled = tk.BooleanVar()
-        telegram_frame = ttk.LabelFrame(notif_frame, text="Telegram Notifications", padding="10")
-        telegram_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
-        
-        ttk.Checkbutton(
-            telegram_frame,
-            text="Enable Telegram notifications",
-            variable=self.telegram_enabled,
-            command=self.update_step_visibility
-        ).pack(anchor='w')
-        
-        ttk.Label(
-            telegram_frame,
-            text="Send notifications via Telegram bot",
-            font=('Arial', 9)
-        ).pack(anchor='w', pady=(5, 0))
-        
-        # Basic settings
-        settings_frame = ttk.LabelFrame(notif_frame, text="Basic Settings", padding="10")
-        settings_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=(20, 5))
-        
-        ttk.Label(settings_frame, text="Reminder interval (minutes):").pack(anchor='w')
-        self.interval_var = tk.StringVar(value="20")
-        interval_entry = ttk.Entry(settings_frame, textvariable=self.interval_var, width=10)
-        interval_entry.pack(anchor='w', pady=(2, 10))
-        
-        ttk.Label(settings_frame, text="Sleep hours:").pack(anchor='w')
-        sleep_frame = ttk.Frame(settings_frame)
-        sleep_frame.pack(anchor='w', pady=(2, 0))
-        
-        ttk.Label(sleep_frame, text="From:").pack(side='left')
-        self.sleep_start_var = tk.StringVar(value="23:00")
-        ttk.Entry(sleep_frame, textvariable=self.sleep_start_var, width=8).pack(side='left', padx=(5, 10))
-        
-        ttk.Label(sleep_frame, text="To:").pack(side='left')
-        self.sleep_end_var = tk.StringVar(value="07:00")
-        ttk.Entry(sleep_frame, textvariable=self.sleep_end_var, width=8).pack(side='left', padx=(5, 0))
-    
-    def create_email_config_page(self):
-        """Create email configuration page."""
-        if not self.email_enabled.get():
-            self.next_step()
-            return
-            
-        # Create scrollable frame for email config
-        canvas = tk.Canvas(self.content_frame)
-        scrollbar = ttk.Scrollbar(self.content_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
-        
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        
-        canvas.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
-        
-        self.content_frame.columnconfigure(0, weight=1)
-        self.content_frame.rowconfigure(0, weight=1)
-        
-        # Email configuration form
-        ttk.Label(
-            scrollable_frame,
-            text="Email Configuration",
-            style='Heading.TLabel'
-        ).grid(row=0, column=0, columnspan=2, pady=(0, 20))
-        
-        # SMTP Server
-        ttk.Label(scrollable_frame, text="SMTP Server:").grid(row=1, column=0, sticky='w', pady=5)
-        self.smtp_server_var = tk.StringVar()
-        ttk.Entry(scrollable_frame, textvariable=self.smtp_server_var, width=40).grid(row=1, column=1, sticky='w', padx=(10, 0))
-        
-        # SMTP Port
-        ttk.Label(scrollable_frame, text="SMTP Port:").grid(row=2, column=0, sticky='w', pady=5)
-        self.smtp_port_var = tk.StringVar(value="587")
-        ttk.Entry(scrollable_frame, textvariable=self.smtp_port_var, width=20).grid(row=2, column=1, sticky='w', padx=(10, 0))
-        
-        # Email Address
-        ttk.Label(scrollable_frame, text="Your Email:").grid(row=3, column=0, sticky='w', pady=5)
-        self.email_address_var = tk.StringVar()
-        ttk.Entry(scrollable_frame, textvariable=self.email_address_var, width=40).grid(row=3, column=1, sticky='w', padx=(10, 0))
-        
-        # Password
-        ttk.Label(scrollable_frame, text="Password:").grid(row=4, column=0, sticky='w', pady=5)
-        self.email_password_var = tk.StringVar()
-        ttk.Entry(scrollable_frame, textvariable=self.email_password_var, width=40, show="*").grid(row=4, column=1, sticky='w', padx=(10, 0))
-        
-        # Recipient
-        ttk.Label(scrollable_frame, text="Send To:").grid(row=5, column=0, sticky='w', pady=5)
-        self.email_recipient_var = tk.StringVar()
-        ttk.Entry(scrollable_frame, textvariable=self.email_recipient_var, width=40).grid(row=5, column=1, sticky='w', padx=(10, 0))
-        
-        # Common providers info
-        info_frame = ttk.LabelFrame(scrollable_frame, text="Common SMTP Settings", padding="10")
-        info_frame.grid(row=6, column=0, columnspan=2, pady=(20, 0), sticky=(tk.W, tk.E))
-        
-        provider_info = """Gmail: smtp.gmail.com:587 (use App Password)
-Outlook/Hotmail: smtp-mail.outlook.com:587
-Yahoo: smtp.mail.yahoo.com:587
-ProtonMail: 127.0.0.1:1025 (requires ProtonMail Bridge)
-
-For Gmail: Enable 2FA and create an App Password at:
-https://myaccount.google.com/apppasswords"""
-        
-        ttk.Label(info_frame, text=provider_info, justify='left', font=('Courier', 9)).pack(anchor='w')
-        
-        # Test button
-        ttk.Button(
-            scrollable_frame,
-            text="Test Email Configuration",
-            command=self.test_email_config
-        ).grid(row=7, column=0, columnspan=2, pady=(20, 0))
-    
-    def create_telegram_config_page(self):
-        """Create Telegram configuration page."""
-        if not self.telegram_enabled.get():
-            self.next_step()
-            return
-            
-        telegram_frame = ttk.Frame(self.content_frame)
-        telegram_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        telegram_frame.columnconfigure(0, weight=1)
-        
-        ttk.Label(
-            telegram_frame,
-            text="Telegram Configuration",
-            style='Heading.TLabel'
-        ).grid(row=0, column=0, pady=(0, 20))
-        
-        # Instructions
-        instructions = """To set up Telegram notifications:
-
-1. Create a bot:
-   • Open Telegram and search for @BotFather
-   • Send /newbot and follow the instructions
-   • Copy the bot token (looks like: 123456789:ABCdefGhIjKlMnOpQrStUvWxYz)
-
-2. Get your Chat ID:
-   • Search for @userinfobot and start a conversation
-   • It will send you your Chat ID (a number like: 123456789)
-   • OR send a message to your bot, then visit:
-     https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
-
-3. Enter the information below:"""
-        
-        inst_label = ttk.Label(telegram_frame, text=instructions, justify='left')
-        inst_label.grid(row=1, column=0, pady=(0, 20), sticky='w')
-        
-        # Configuration form
-        config_frame = ttk.Frame(telegram_frame)
-        config_frame.grid(row=2, column=0, sticky=(tk.W, tk.E))
-        
-        ttk.Label(config_frame, text="Bot Token:").grid(row=0, column=0, sticky='w', pady=5)
-        self.telegram_token_var = tk.StringVar()
-        ttk.Entry(config_frame, textvariable=self.telegram_token_var, width=50).grid(row=0, column=1, sticky='w', padx=(10, 0))
-        
-        ttk.Label(config_frame, text="Chat ID:").grid(row=1, column=0, sticky='w', pady=5)
-        self.telegram_chat_var = tk.StringVar()
-        ttk.Entry(config_frame, textvariable=self.telegram_chat_var, width=30).grid(row=1, column=1, sticky='w', padx=(10, 0))
-        
-        # Test button
-        ttk.Button(
-            telegram_frame,
-            text="Test Telegram Configuration",
-            command=self.test_telegram_config
-        ).grid(row=3, column=0, pady=(20, 0))
-    
-    def create_integration_page(self):
-        """Create system integration options page."""
-        integration_frame = ttk.Frame(self.content_frame)
-        integration_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        ttk.Label(
-            integration_frame,
-            text="System Integration",
-            style='Heading.TLabel'
-        ).grid(row=0, column=0, pady=(0, 20))
-        
-        # Auto-start options
-        autostart_frame = ttk.LabelFrame(integration_frame, text="Startup Options", padding="10")
-        autostart_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5)
-        
-        self.autostart_enabled = tk.BooleanVar(value=True)
-        ttk.Checkbutton(
-            autostart_frame,
-            text="Start LookAway automatically on login",
-            variable=self.autostart_enabled
-        ).pack(anchor='w')
-        
-        autostart_info = """This will create a desktop entry in ~/.config/autostart/
-Works with most Linux desktop environments (GNOME, KDE, XFCE, etc.)"""
-        
-        ttk.Label(autostart_frame, text=autostart_info, font=('Arial', 9)).pack(anchor='w', pady=(5, 0))
-        
-        # Desktop integration
-        desktop_frame = ttk.LabelFrame(integration_frame, text="Desktop Integration", padding="10")
-        desktop_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=5)
-        
-        self.desktop_entry_enabled = tk.BooleanVar(value=True)
-        ttk.Checkbutton(
-            desktop_frame,
-            text="Create application menu entry",
-            variable=self.desktop_entry_enabled
-        ).pack(anchor='w')
-        
-        desktop_info = """Creates a desktop entry in ~/.local/share/applications/
-Allows launching LookAway from the application menu"""
-        
-        ttk.Label(desktop_frame, text=desktop_info, font=('Arial', 9)).pack(anchor='w', pady=(5, 0))
-        
-        # System tray info
-        tray_frame = ttk.LabelFrame(integration_frame, text="System Tray", padding="10")
-        tray_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
-        
-        tray_info = """LookAway will attempt to use your desktop's system tray.
-        
-Supported on:
-• GNOME (with TopIcons or AppIndicator extensions)
-• KDE Plasma
-• XFCE
-• MATE
-• Cinnamon
-• Other desktop environments with system tray support
-
-If system tray is not available, LookAway can run in console mode."""
-        
-        ttk.Label(tray_frame, text=tray_info, justify='left', font=('Arial', 9)).pack(anchor='w')
-    
-    def create_install_page(self):
-        """Create installation progress page."""
-        install_frame = ttk.Frame(self.content_frame)
-        install_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        install_frame.columnconfigure(0, weight=1)
-        install_frame.rowconfigure(2, weight=1)
-        
-        ttk.Label(
-            install_frame,
-            text="Installing LookAway",
-            style='Heading.TLabel'
-        ).grid(row=0, column=0, pady=(0, 20))
-        
-        # Progress bar
-        self.progress_var = tk.DoubleVar()
-        self.progress_bar = ttk.Progressbar(
-            install_frame,
-            variable=self.progress_var,
-            maximum=100
-        )
-        self.progress_bar.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
-        
-        # Status text
-        self.status_text = scrolledtext.ScrolledText(
-            install_frame,
-            height=15,
-            state='disabled',
-            font=('Courier', 10)
-        )
-        self.status_text.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        # Disable navigation during install
-        self.back_button.config(state='disabled')
-        self.next_button.config(state='disabled')
-        
-        # Start installation
-        self.root.after(100, self.perform_installation)
-    
-    def create_complete_page(self):
-        """Create installation complete page."""
-        complete_frame = ttk.Frame(self.content_frame)
-        complete_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        complete_frame.columnconfigure(0, weight=1)
-        
-        ttk.Label(
-            complete_frame,
-            text="Installation Complete!",
-            style='Title.TLabel'
-        ).grid(row=0, column=0, pady=(0, 20))
-        
-        success_text = f"""LookAway has been successfully installed!
-
-Installation directory: {self.install_dir}
-
-What's next:
-• LookAway will start automatically on next login (if enabled)
-• You can launch it from the application menu
-• Or run it from terminal: {self.install_dir}/lookaway
-
-Configuration:
-• Settings are stored in ~/.config/LookAway/
-• You can modify configuration anytime by running the setup wizard
-
-To start LookAway now, click the 'Launch Now' button below.
-
-Thank you for using LookAway! Take care of your eyes! 👀"""
-        
-        text_widget = scrolledtext.ScrolledText(
-            complete_frame,
-            wrap=tk.WORD,
-            height=15,
-            font=('Arial', 11),
-            state='disabled'
-        )
-        text_widget.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        text_widget.config(state='normal')
-        text_widget.insert('1.0', success_text)
-        text_widget.config(state='disabled')
-        
-        # Launch button
-        button_frame = ttk.Frame(complete_frame)
-        button_frame.grid(row=2, column=0, pady=(20, 0))
-        
-        ttk.Button(
-            button_frame,
-            text="Launch LookAway Now",
-            command=self.launch_application,
-            style='Install.TButton'
-        ).pack(side='left', padx=(0, 10))
-        
-        ttk.Button(
-            button_frame,
-            text="Open Installation Directory",
-            command=self.open_install_dir
-        ).pack(side='left')
-        
-        # Update finish button
-        self.next_button.config(text="Finish", command=self.finish_installation)
-    
-    # Navigation methods
-    def next_step(self):
-        """Move to next installation step."""
-        if self.validate_current_step():
-            self.show_step(self.current_step + 1)
-    
-    def previous_step(self):
-        """Move to previous installation step."""
-        if self.current_step > 0:
-            self.show_step(self.current_step - 1)
-    
-    def validate_current_step(self):
-        """Validate current step before proceeding."""
-        if self.current_step == 1:  # License page
-            if not hasattr(self, 'license_agreed') or not self.license_agreed.get():
-                messagebox.showerror("License Agreement", "You must accept the license agreement to continue.")
-                return False
-        
-        elif self.current_step == 2:  # Directory page
-            install_dir = self.install_dir_var.get().strip()
-            if not install_dir:
-                messagebox.showerror("Installation Directory", "Please select an installation directory.")
-                return False
-            
-            # Check if directory is writable
-            parent_dir = Path(install_dir).parent
-            if not parent_dir.exists():
-                try:
-                    parent_dir.mkdir(parents=True, exist_ok=True)
-                except Exception as e:
-                    messagebox.showerror("Directory Error", f"Cannot create directory: {e}")
-                    return False
-            
-            if not os.access(parent_dir, os.W_OK):
-                messagebox.showerror("Permission Error", "No write permission for selected directory.")
-                return False
-            
-            self.install_dir = install_dir
-        
-        elif self.current_step == 4:  # Email config
-            if self.email_enabled.get():
-                if not all([
-                    self.smtp_server_var.get().strip(),
-                    self.smtp_port_var.get().strip(),
-                    self.email_address_var.get().strip(),
-                    self.email_password_var.get().strip()
-                ]):
-                    messagebox.showerror("Email Configuration", "Please fill in all email settings.")
-                    return False
-                
-                try:
-                    int(self.smtp_port_var.get().strip())
-                except ValueError:
-                    messagebox.showerror("Email Configuration", "SMTP port must be a number.")
-                    return False
-        
-        elif self.current_step == 5:  # Telegram config
-            if self.telegram_enabled.get():
-                if not all([
-                    self.telegram_token_var.get().strip(),
-                    self.telegram_chat_var.get().strip()
-                ]):
-                    messagebox.showerror("Telegram Configuration", "Please fill in Telegram bot token and chat ID.")
-                    return False
-        
-        return True
-    
-    def update_next_button(self):
-        """Update next button state based on current page."""
-        if self.current_step == 1:  # License page
-            if hasattr(self, 'license_agreed'):
-                self.next_button.config(state='normal' if self.license_agreed.get() else 'disabled')
-    
-    def update_step_visibility(self):
-        """Update which steps should be shown based on configuration."""
-        pass  # Steps are always shown, but will be skipped if not needed
-    
-    # Utility methods
-    def browse_install_dir(self):
-        """Open directory browser for installation path."""
-        directory = filedialog.askdirectory(
-            title="Choose Installation Directory",
-            initialdir=self.install_dir_var.get()
-        )
-        if directory:
-            self.install_dir_var.set(directory)
-    
-    def test_email_config(self):
-        """Test email configuration."""
+    def get_resource_path(self, relative_path):
+        """Get absolute path to resource, works for dev and for PyInstaller"""
         try:
-            import smtplib
-            import email.mime.text
-            
-            server = smtplib.SMTP(
-                self.smtp_server_var.get().strip(),
-                int(self.smtp_port_var.get().strip())
-            )
-            server.starttls()
-            server.login(
-                self.email_address_var.get().strip(),
-                self.email_password_var.get().strip()
-            )
-            
-            # Send test message
-            msg = email.mime.text.MIMEText("LookAway email configuration test successful!")
-            msg['Subject'] = "LookAway Test Email"
-            msg['From'] = self.email_address_var.get().strip()
-            msg['To'] = self.email_recipient_var.get().strip() or self.email_address_var.get().strip()
-            
-            server.send_message(msg)
-            server.quit()
-            
-            messagebox.showinfo("Email Test", "Test email sent successfully!")
-            
-        except Exception as e:
-            messagebox.showerror("Email Test Failed", f"Email test failed:\n{str(e)}")
-    
-    def test_telegram_config(self):
-        """Test Telegram configuration."""
-        try:
-            # Basic validation
-            token = self.telegram_token_var.get().strip()
-            chat_id = self.telegram_chat_var.get().strip()
-            
-            if not token or not chat_id:
-                messagebox.showerror("Telegram Test", "Please enter both bot token and chat ID.")
-                return
-            
-            # Try to send test message (requires internet connection)
-            import urllib.request
-            import urllib.parse
-            import json
-            
-            url = f"https://api.telegram.org/bot{token}/sendMessage"
-            data = {
-                'chat_id': chat_id,
-                'text': '🔔 LookAway Telegram configuration test successful!'
-            }
-            
-            data_encoded = urllib.parse.urlencode(data).encode('utf-8')
-            req = urllib.request.Request(url, data_encoded)
-            
-            with urllib.request.urlopen(req, timeout=10) as response:
-                result = json.loads(response.read().decode('utf-8'))
-                if result.get('ok'):
-                    messagebox.showinfo("Telegram Test", "Test message sent successfully!")
-                else:
-                    messagebox.showerror("Telegram Test", f"Telegram API error: {result.get('description', 'Unknown error')}")
-        
-        except Exception as e:
-            messagebox.showerror("Telegram Test Failed", f"Telegram test failed:\n{str(e)}")
+            base_path = sys._MEIPASS
+        except Exception:
+            base_path = os.path.abspath(".")
+        return os.path.join(base_path, relative_path)
     
     def get_license_text(self):
-        """Get license text from embedded data or default."""
-        # This will be replaced by create_installer.py with actual license
+        """Get the license text"""
+        # Try to read from actual LICENSE file
+        license_paths = [
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "LICENSE"),
+            self.get_resource_path("LICENSE"),
+            "LICENSE"
+        ]
+        
+        for license_path in license_paths:
+            try:
+                if os.path.exists(license_path):
+                    with open(license_path, 'r', encoding='utf-8') as f:
+                        return f.read()
+            except Exception:
+                continue
+        
+        # Fallback license text
         return """MIT License
 
-Copyright (c) 2025 LookAway
+Copyright (c) 2025 rdipasquali
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -838,195 +146,703 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE."""
+    
+    def show_current_step(self):
+        """Display the current installation step"""
+        # Clear main frame
+        for widget in self.main_frame.winfo_children():
+            widget.destroy()
+        
+        # Call the current step function
+        if 0 <= self.current_step < len(self.steps):
+            self.steps[self.current_step]()
+        
+        # Update navigation buttons
+        self.update_navigation_buttons()
+    
+    def update_navigation_buttons(self):
+        """Update the state of navigation buttons"""
+        # Back button
+        self.back_btn.config(state="normal" if self.current_step > 0 else "disabled")
+        
+        # Next/Install/Finish button
+        if self.current_step == len(self.steps) - 2:  # Installation page
+            self.next_btn.config(text="Install", command=self.start_installation)
+        elif self.current_step == len(self.steps) - 1:  # Completion page
+            self.next_btn.config(text="Finish", command=self.finish_installation)
+        else:
+            self.next_btn.config(text="Next >", command=self.go_next)
+    
+    def update_progress(self):
+        """Update progress bar"""
+        if len(self.steps) > 0:
+            progress = (self.current_step / len(self.steps)) * 100
+            self.progress_var.set(progress)
+    
+    def go_next(self):
+        """Move to the next installation step"""
+        if self.validate_current_step():
+            # Rebuild steps if we're leaving the configuration page
+            if self.current_step == 3:  # Configuration page (0-indexed)
+                self.rebuild_steps()
+            
+            self.current_step += 1
+            self.update_progress()
+            self.show_current_step()
+    
+    def go_back(self):
+        """Move to the previous installation step"""
+        if self.current_step > 0:
+            self.current_step -= 1
+            self.update_progress()
+            self.show_current_step()
+    
+    def cancel_installation(self):
+        """Cancel the installation"""
+        if messagebox.askyesno("Cancel Installation", "Are you sure you want to cancel the installation?"):
+            self.root.quit()
+    
+    def rebuild_steps(self):
+        """Rebuild step sequence based on configuration - SAME as Windows"""
+        # Start with base steps
+        new_steps = self.base_steps.copy()
+        
+        # Add configuration steps based on user selections
+        if hasattr(self, 'email_var') and self.email_var.get():
+            new_steps.append(self.create_email_config_page)
+        
+        if hasattr(self, 'telegram_var') and self.telegram_var.get():
+            new_steps.append(self.create_telegram_config_page)
+        
+        # Add final steps
+        new_steps.extend(self.final_steps)
+        
+        # Update steps if changed
+        if new_steps != self.steps:
+            old_step_count = len(self.steps)
+            self.steps = new_steps
+            print(f"DEBUG: Steps rebuilt - was {old_step_count}, now {len(self.steps)}")
+    
+    def validate_current_step(self):
+        """Validate current step before proceeding"""
+        if self.current_step == 2:  # Installation path
+            if not os.path.exists(os.path.dirname(self.config['install_path'])):
+                messagebox.showerror("Invalid Path", "The selected installation directory is not valid.")
+                return False
+        elif self.steps[self.current_step] == self.create_configuration_page:
+            # Configuration page validation and saving - SAME as Windows
+            self.config['reminder_interval'] = self.interval_var.get()
+            self.config['sleep_start'] = self.sleep_start_var.get()
+            self.config['sleep_end'] = self.sleep_end_var.get()
+            self.config['email_enabled'] = self.email_var.get()
+            self.config['telegram_enabled'] = self.telegram_var.get()
+            print(f"DEBUG: Config updated - email: {self.config['email_enabled']}, telegram: {self.config['telegram_enabled']}")
+            return True
+        elif self.steps[self.current_step] == self.create_email_config_page:
+            # Email configuration validation and saving
+            if self.validate_email_config():
+                # Save email configuration
+                self.config['email_settings'] = {
+                    'smtp_server': self.smtp_server_var.get(),
+                    'smtp_port': int(self.smtp_port_var.get()),
+                    'email': self.email_address_var.get(),
+                    'password': self.email_password_var.get(),
+                    'recipient': self.email_recipient_var.get()
+                }
+                return True
+            return False
+        elif self.steps[self.current_step] == self.create_telegram_config_page:
+            # Telegram configuration validation and saving
+            if self.validate_telegram_config():
+                # Save telegram configuration
+                self.config['telegram_settings'] = {
+                    'bot_token': self.telegram_token_var.get(),
+                    'chat_id': self.telegram_chat_id_var.get()
+                }
+                return True
+            return False
+        return True
+    
+    # Page creation methods - SAME structure as Windows
+    def create_welcome_page(self):
+        """Welcome page"""
+        print("DEBUG: Creating welcome page")
+        welcome_frame = ttk.Frame(self.main_frame)
+        welcome_frame.pack(fill=tk.BOTH, expand=True)
+        
+        title_label = ttk.Label(welcome_frame, text="Welcome to LookAway Setup", 
+                               font=('Arial', 16, 'bold'))
+        title_label.pack(pady=(0, 20))
+        
+        description_text = """LookAway helps protect your eyes by reminding you to take regular breaks from your computer screen.
 
+Features:
+• Customizable reminder intervals
+• Multiple notification methods (desktop, email, Telegram)
+• Sleep time detection
+• System tray integration
+• Cross-platform support
+
+This wizard will guide you through the installation process.
+
+Click 'Next' to continue."""
+        
+        desc_label = ttk.Label(welcome_frame, text=description_text, justify='left')
+        desc_label.pack(pady=20)
+    
+    def create_license_page(self):
+        """License agreement page"""
+        print("DEBUG: Creating license page")
+        license_frame = ttk.Frame(self.main_frame)
+        license_frame.pack(fill=tk.BOTH, expand=True)
+        
+        title_label = ttk.Label(license_frame, text="License Agreement", 
+                               font=('Arial', 14, 'bold'))
+        title_label.pack(pady=(0, 10))
+        
+        ttk.Label(license_frame, text="Please read and accept the license agreement:").pack(anchor=tk.W)
+        
+        # License text area
+        text_frame = ttk.Frame(license_frame)
+        text_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        
+        license_text = scrolledtext.ScrolledText(text_frame, wrap=tk.WORD, width=60, height=15)
+        license_text.pack(fill=tk.BOTH, expand=True)
+        license_text.insert(tk.END, self.get_license_text())
+        license_text.config(state='disabled')
+        
+        # Accept checkbox
+        self.license_accepted = tk.BooleanVar()
+        accept_frame = ttk.Frame(license_frame)
+        accept_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        accept_check = ttk.Checkbutton(accept_frame, text="I accept the license agreement", 
+                                      variable=self.license_accepted)
+        accept_check.pack(anchor=tk.W)
+    
+    def create_installation_path_page(self):
+        """Installation path selection page"""
+        print("DEBUG: Creating installation path page")
+        path_frame = ttk.Frame(self.main_frame)
+        path_frame.pack(fill=tk.BOTH, expand=True)
+        
+        title_label = ttk.Label(path_frame, text="Choose Installation Location", 
+                               font=('Arial', 14, 'bold'))
+        title_label.pack(pady=(0, 20))
+        
+        ttk.Label(path_frame, text="Select the folder where LookAway will be installed:").pack(anchor=tk.W, pady=(0, 10))
+        
+        # Path selection frame
+        path_select_frame = ttk.Frame(path_frame)
+        path_select_frame.pack(fill=tk.X, pady=10)
+        
+        self.path_var = tk.StringVar(value=self.config['install_path'])
+        path_entry = ttk.Entry(path_select_frame, textvariable=self.path_var, width=50)
+        path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        browse_btn = ttk.Button(path_select_frame, text="Browse...", command=self.browse_install_path)
+        browse_btn.pack(side=tk.RIGHT, padx=(10, 0))
+        
+        # Info frame
+        info_frame = ttk.Frame(path_frame)
+        info_frame.pack(fill=tk.X, pady=(20, 0))
+        
+        info_text = f"""Space required: approximately 50 MB
+Default location: {Path.home() / ".local" / "share" / "LookAway"}
+
+The installer will create the directory if it doesn't exist."""
+        
+        ttk.Label(info_frame, text=info_text, justify='left').pack(anchor=tk.W)
+    
+    def browse_install_path(self):
+        """Browse for installation directory"""
+        path = filedialog.askdirectory(initialdir=os.path.dirname(self.config['install_path']))
+        if path:
+            self.config['install_path'] = os.path.join(path, 'LookAway')
+            self.path_var.set(self.config['install_path'])
+    
+    # Step 4: Configuration - SAME as Windows
+    def create_configuration_page(self):
+        """Configuration page with tabs - EXACTLY like Windows"""
+        print("DEBUG: Creating configuration page")
+        config_frame = ttk.Frame(self.main_frame)
+        config_frame.pack(fill=tk.BOTH, expand=True)
+        
+        title_label = ttk.Label(config_frame, text="Initial Configuration", 
+                               font=('Arial', 14, 'bold'))
+        title_label.pack(pady=(0, 20))
+        
+        # Create notebook for tabs
+        notebook = ttk.Notebook(config_frame)
+        notebook.pack(fill=tk.BOTH, expand=True)
+        
+        # Basic settings tab
+        basic_frame = ttk.Frame(notebook)
+        notebook.add(basic_frame, text="Basic Settings")
+        
+        # Reminder interval
+        interval_frame = ttk.LabelFrame(basic_frame, text="Reminder Frequency", padding="10")
+        interval_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(interval_frame, text="Remind me every:").pack(anchor=tk.W)
+        
+        interval_entry_frame = ttk.Frame(interval_frame)
+        interval_entry_frame.pack(fill=tk.X, pady=(5, 0))
+        
+        self.interval_var = tk.IntVar(value=self.config['reminder_interval'])
+        interval_spin = ttk.Spinbox(interval_entry_frame, from_=1, to=480, 
+                                   textvariable=self.interval_var, width=10)
+        interval_spin.pack(side=tk.LEFT)
+        ttk.Label(interval_entry_frame, text="minutes").pack(side=tk.LEFT, padx=(5, 0))
+        
+        # Sleep hours
+        sleep_frame = ttk.LabelFrame(basic_frame, text="Sleep Hours (No Reminders)", padding="10")
+        sleep_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        sleep_entry_frame = ttk.Frame(sleep_frame)
+        sleep_entry_frame.pack(fill=tk.X)
+        
+        ttk.Label(sleep_entry_frame, text="From:").pack(side=tk.LEFT)
+        self.sleep_start_var = tk.StringVar(value=self.config['sleep_start'])
+        start_entry = ttk.Entry(sleep_entry_frame, textvariable=self.sleep_start_var, width=8)
+        start_entry.pack(side=tk.LEFT, padx=(5, 10))
+        
+        ttk.Label(sleep_entry_frame, text="To:").pack(side=tk.LEFT)
+        self.sleep_end_var = tk.StringVar(value=self.config['sleep_end'])
+        end_entry = ttk.Entry(sleep_entry_frame, textvariable=self.sleep_end_var, width=8)
+        end_entry.pack(side=tk.LEFT, padx=(5, 0))
+        
+        ttk.Label(sleep_frame, text="Format: HH:MM (24-hour)").pack(anchor=tk.W, pady=(5, 0))
+        
+        # Notifications tab
+        notif_frame = ttk.Frame(notebook)
+        notebook.add(notif_frame, text="Notifications")
+        
+        ttk.Label(notif_frame, text="Choose how you want to receive reminders:").pack(anchor=tk.W, pady=(0, 10))
+        
+        # Desktop notifications (always enabled)
+        desktop_frame = ttk.Frame(notif_frame)
+        desktop_frame.pack(fill=tk.X, pady=5)
+        self.desktop_var = tk.BooleanVar(value=True)
+        desktop_check = ttk.Checkbutton(desktop_frame, text="Desktop notifications", 
+                                       variable=self.desktop_var, state="disabled")
+        desktop_check.pack(side=tk.LEFT)
+        ttk.Label(desktop_frame, text="(Recommended)", font=('Arial', 9, 'italic')).pack(side=tk.LEFT, padx=(5, 0))
+        
+        # Email notifications
+        self.email_var = tk.BooleanVar(value=self.config['email_enabled'])
+        email_check = ttk.Checkbutton(notif_frame, text="Email notifications", 
+                                     variable=self.email_var)
+        email_check.pack(anchor=tk.W, pady=5)
+        
+        # Telegram notifications
+        self.telegram_var = tk.BooleanVar(value=self.config['telegram_enabled'])
+        telegram_check = ttk.Checkbutton(notif_frame, text="Telegram notifications", 
+                                        variable=self.telegram_var)
+        telegram_check.pack(anchor=tk.W, pady=5)
+        
+        ttk.Label(notif_frame, text="Note: Additional configuration steps will be added if you select email or Telegram.", 
+                 font=('Arial', 9, 'italic')).pack(anchor=tk.W, pady=(15, 0))
+    
+    def create_options_page(self):
+        """Installation options page"""
+        print("DEBUG: Creating options page")
+        options_frame = ttk.Frame(self.main_frame)
+        options_frame.pack(fill=tk.BOTH, expand=True)
+        
+        title_label = ttk.Label(options_frame, text="Installation Options", 
+                               font=('Arial', 14, 'bold'))
+        title_label.pack(pady=(0, 20))
+        
+        # Shortcuts frame
+        shortcuts_frame = ttk.LabelFrame(options_frame, text="Shortcuts", padding="15")
+        shortcuts_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        self.desktop_shortcut_var = tk.BooleanVar(value=self.config['create_desktop_shortcut'])
+        desktop_check = ttk.Checkbutton(shortcuts_frame, text="Create desktop shortcut", 
+                                       variable=self.desktop_shortcut_var)
+        desktop_check.pack(anchor=tk.W, pady=2)
+        
+        self.start_menu_var = tk.BooleanVar(value=self.config['create_start_menu'])
+        start_menu_check = ttk.Checkbutton(shortcuts_frame, text="Add to application menu", 
+                                          variable=self.start_menu_var)
+        start_menu_check.pack(anchor=tk.W, pady=2)
+        
+        # Startup frame
+        startup_frame = ttk.LabelFrame(options_frame, text="Startup Options", padding="15")
+        startup_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        self.auto_start_var = tk.BooleanVar(value=self.config['auto_start'])
+        auto_start_check = ttk.Checkbutton(startup_frame, 
+                                          text="Start LookAway when I log in",
+                                          variable=self.auto_start_var)
+        auto_start_check.pack(anchor=tk.W, pady=2)
+        
+        self.launch_after_var = tk.BooleanVar(value=self.config['launch_after_install'])
+        launch_check = ttk.Checkbutton(startup_frame, 
+                                      text="Launch LookAway after installation",
+                                      variable=self.launch_after_var)
+        launch_check.pack(anchor=tk.W, pady=2)
+    
+    # Email Configuration Page (shown if email notifications enabled) - SAME as Windows
+    def create_email_config_page(self):
+        print("DEBUG: Creating email configuration page")
+        
+        # Clear main frame
+        for widget in self.main_frame.winfo_children():
+            widget.destroy()
+        
+        title_label = ttk.Label(self.main_frame, text="Email Configuration", 
+                               font=('Arial', 14, 'bold'))
+        title_label.pack(pady=(0, 20))
+        
+        # Create scrollable frame if needed
+        main_container = ttk.Frame(self.main_frame)
+        main_container.pack(fill=tk.BOTH, expand=True)
+        
+        # Use canvas for scrolling if content is too tall
+        canvas = tk.Canvas(main_container, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(main_container, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Compact form layout
+        form_frame = ttk.Frame(scrollable_frame)
+        form_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        # SMTP Server (row 0)
+        ttk.Label(form_frame, text="SMTP Server:").grid(row=0, column=0, sticky=tk.W, pady=3)
+        self.smtp_server_var = tk.StringVar(value="smtp.gmail.com")
+        smtp_entry = ttk.Entry(form_frame, textvariable=self.smtp_server_var, width=25)
+        smtp_entry.grid(row=0, column=1, sticky=tk.W, padx=(10, 0), pady=3)
+        
+        # SMTP Port (row 1)
+        ttk.Label(form_frame, text="SMTP Port:").grid(row=1, column=0, sticky=tk.W, pady=3)
+        self.smtp_port_var = tk.StringVar(value="587")
+        port_entry = ttk.Entry(form_frame, textvariable=self.smtp_port_var, width=8)
+        port_entry.grid(row=1, column=1, sticky=tk.W, padx=(10, 0), pady=3)
+        
+        # Separator
+        separator = ttk.Separator(form_frame, orient='horizontal')
+        separator.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=8)
+        
+        # Email address (row 3)
+        ttk.Label(form_frame, text="Your Email:").grid(row=3, column=0, sticky=tk.W, pady=3)
+        self.email_address_var = tk.StringVar()
+        email_entry = ttk.Entry(form_frame, textvariable=self.email_address_var, width=25)
+        email_entry.grid(row=3, column=1, sticky=tk.W, padx=(10, 0), pady=3)
+        
+        # Password (row 4)
+        ttk.Label(form_frame, text="Password/App Password:").grid(row=4, column=0, sticky=tk.W, pady=3)
+        self.email_password_var = tk.StringVar()
+        password_entry = ttk.Entry(form_frame, textvariable=self.email_password_var, width=25, show="*")
+        password_entry.grid(row=4, column=1, sticky=tk.W, padx=(10, 0), pady=3)
+        
+        # Recipient (row 5)
+        ttk.Label(form_frame, text="Recipient Email:").grid(row=5, column=0, sticky=tk.W, pady=3)
+        self.email_recipient_var = tk.StringVar()
+        recipient_entry = ttk.Entry(form_frame, textvariable=self.email_recipient_var, width=25)
+        recipient_entry.grid(row=5, column=1, sticky=tk.W, padx=(10, 0), pady=3)
+        
+        # Help text in a compact frame
+        help_frame = ttk.LabelFrame(scrollable_frame, text="💡 Gmail Setup Tip", padding="10")
+        help_frame.pack(fill=tk.X, padx=20, pady=(10, 5))
+        
+        help_text = ttk.Label(help_frame, 
+                             text="Use an App Password for Gmail (not your regular password).\nGenerate one in Google Account → Security → 2-Step Verification → App passwords",
+                             font=('Arial', 8), justify=tk.LEFT)
+        help_text.pack()
+        
+        # Configure column weights for proper resizing
+        form_frame.columnconfigure(1, weight=1)
+    
+    # Telegram Configuration Page (shown if telegram notifications enabled) - SAME as Windows
+    def create_telegram_config_page(self):
+        print("DEBUG: Creating telegram configuration page")
+        
+        # Clear main frame
+        for widget in self.main_frame.winfo_children():
+            widget.destroy()
+        
+        title_label = ttk.Label(self.main_frame, text="Telegram Configuration", 
+                               font=('Arial', 14, 'bold'))
+        title_label.pack(pady=(0, 20))
+        
+        telegram_frame = ttk.Frame(self.main_frame)
+        telegram_frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(telegram_frame, text="Configure your Telegram bot for notifications:", 
+                 font=('Arial', 10)).pack(pady=(0, 15))
+        
+        # Bot settings
+        bot_frame = ttk.LabelFrame(telegram_frame, text="Bot Configuration", padding="15")
+        bot_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # Bot token
+        ttk.Label(bot_frame, text="Bot Token:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        self.telegram_token_var = tk.StringVar()
+        token_entry = ttk.Entry(bot_frame, textvariable=self.telegram_token_var, width=40)
+        token_entry.grid(row=0, column=1, sticky=tk.W, padx=(10, 0), pady=5)
+        
+        # Chat ID
+        ttk.Label(bot_frame, text="Chat ID:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        self.telegram_chat_id_var = tk.StringVar()
+        chat_entry = ttk.Entry(bot_frame, textvariable=self.telegram_chat_id_var, width=20)
+        chat_entry.grid(row=1, column=1, sticky=tk.W, padx=(10, 0), pady=5)
+        
+        # Help text
+        help_frame = ttk.LabelFrame(telegram_frame, text="📋 Setup Instructions", padding="10")
+        help_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        help_text = """1. Create a bot: Message @BotFather on Telegram with /newbot
+2. Get your bot token from @BotFather  
+3. Get your chat ID: Message @userinfobot with /start
+4. Enter both values above"""
+        
+        ttk.Label(help_frame, text=help_text, justify=tk.LEFT, font=('Arial', 9)).pack(anchor=tk.W)
+    
+    def validate_email_config(self):
+        """Validate email configuration"""
+        if not self.smtp_server_var.get().strip():
+            messagebox.showerror("Email Setup", "Please enter the SMTP server.")
+            return False
+        if not self.smtp_port_var.get().strip():
+            messagebox.showerror("Email Setup", "Please enter the SMTP port.")
+            return False
+        try:
+            int(self.smtp_port_var.get())
+        except ValueError:
+            messagebox.showerror("Email Setup", "SMTP port must be a number.")
+            return False
+        if not self.email_address_var.get().strip():
+            messagebox.showerror("Email Setup", "Please enter your email address.")
+            return False
+        if not self.email_password_var.get().strip():
+            messagebox.showerror("Email Setup", "Please enter your password.")
+            return False
+        if not self.email_recipient_var.get().strip():
+            messagebox.showerror("Email Setup", "Please enter the recipient email.")
+            return False
+        return True
+    
+    def validate_telegram_config(self):
+        """Validate telegram configuration"""
+        if not self.telegram_token_var.get().strip():
+            messagebox.showerror("Telegram Setup", "Please enter the bot token.")
+            return False
+        if not self.telegram_chat_id_var.get().strip():
+            messagebox.showerror("Telegram Setup", "Please enter the chat ID.")
+            return False
+        return True
+    
+    def create_installation_page(self):
+        """Installation progress page"""
+        print("DEBUG: Creating installation page")
+        install_frame = ttk.Frame(self.main_frame)
+        install_frame.pack(fill=tk.BOTH, expand=True)
+        
+        title_label = ttk.Label(install_frame, text="Installing LookAway", 
+                               font=('Arial', 14, 'bold'))
+        title_label.pack(pady=(0, 20))
+        
+        # Installation summary
+        summary = f"""Ready to install LookAway with the following settings:
+
+Installation Path: {self.config['install_path']}
+Desktop Shortcut: {'Yes' if self.config['create_desktop_shortcut'] else 'No'}
+Application Menu: {'Yes' if self.config['create_start_menu'] else 'No'}
+Auto Start: {'Yes' if self.config['auto_start'] else 'No'}
+Reminder Interval: {self.config['reminder_interval']} minutes
+Sleep Hours: {self.config['sleep_start']} - {self.config['sleep_end']}
+Email Notifications: {'Yes' if self.config['email_enabled'] else 'No'}
+Telegram Notifications: {'Yes' if self.config['telegram_enabled'] else 'No'}
+
+Click 'Install' to begin the installation."""
+        
+        summary_label = ttk.Label(install_frame, text=summary, justify='left')
+        summary_label.pack(pady=10)
+        
+        # Progress area (will be shown during installation)
+        self.install_progress_frame = ttk.Frame(install_frame)
+        
+        self.install_status_label = ttk.Label(self.install_progress_frame, text="")
+        
+        self.install_progress_var = tk.DoubleVar()
+        self.install_progress_bar = ttk.Progressbar(self.install_progress_frame, 
+                                                   variable=self.install_progress_var,
+                                                   mode='indeterminate')
+    
+    def start_installation(self):
+        """Start the installation process"""
+        print("DEBUG: Starting installation")
+        
+        # Update remaining configuration from UI (main config already updated in validation)
+        self.config['install_path'] = self.path_var.get()
+        self.config['create_desktop_shortcut'] = self.desktop_shortcut_var.get()
+        self.config['create_start_menu'] = self.start_menu_var.get()
+        self.config['auto_start'] = self.auto_start_var.get()
+        self.config['launch_after_install'] = self.launch_after_var.get()
+        
+        # Show progress elements
+        self.install_progress_frame.pack(fill=tk.X, pady=(20, 10))
+        self.install_status_label.pack()
+        self.install_progress_bar.pack(fill=tk.X, pady=(10, 0))
+        self.install_progress_bar.start()
+        
+        # Disable navigation
+        self.next_btn.config(state='disabled')
+        self.back_btn.config(state='disabled')
+        self.cancel_btn.config(state='disabled')
+        
+        # Start installation in separate thread
+        install_thread = threading.Thread(target=self.perform_installation)
+        install_thread.daemon = True
+        install_thread.start()
+    
+    def perform_installation(self):
+        """Perform the actual installation - Linux implementation"""
+        try:
+            install_dir = Path(self.config['install_path'])
+            
+            # Update status
+            self.root.after(0, lambda: self.install_status_label.config(text="Creating installation directory..."))
+            install_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Get embedded application data
+            app_data = self.get_embedded_app_data()
+            
+            # Extract main application
+            self.root.after(0, lambda: self.install_status_label.config(text="Installing LookAway application..."))
+            
+            if 'lookaway' in app_data:
+                if app_data['lookaway'] == 'embedded_app_data_placeholder':
+                    self.root.after(0, lambda: messagebox.showwarning("Installation Warning", 
+                                                 "This installer was not properly built with embedded application files.\n"
+                                                 "Please use the create_linux_installer.py script to create a proper installer."))
+                    return
+                
+                # Decode and decompress the application
+                compressed_data = base64.b64decode(app_data['lookaway'])
+                app_binary = gzip.decompress(compressed_data)
+                
+                # Write the application
+                app_path = install_dir / "lookaway"
+                with open(app_path, 'wb') as f:
+                    f.write(app_binary)
+                
+                # Make executable
+                app_path.chmod(0o755)
+            
+            # Create configuration files
+            self.root.after(0, lambda: self.install_status_label.config(text="Creating configuration..."))
+            self.create_config_files(install_dir)
+            
+            # Create shortcuts
+            if self.config['create_desktop_shortcut']:
+                self.root.after(0, lambda: self.install_status_label.config(text="Creating desktop shortcut..."))
+                self.create_desktop_shortcut(install_dir)
+            
+            if self.config['create_start_menu']:
+                self.root.after(0, lambda: self.install_status_label.config(text="Adding to application menu..."))
+                self.create_application_menu_entry(install_dir)
+            
+            # Setup autostart
+            if self.config['auto_start']:
+                self.root.after(0, lambda: self.install_status_label.config(text="Setting up autostart..."))
+                self.create_autostart_entry(install_dir)
+            
+            # Create uninstaller
+            self.root.after(0, lambda: self.install_status_label.config(text="Creating uninstaller..."))
+            self.create_uninstaller(install_dir)
+            
+            self.root.after(0, lambda: self.install_status_label.config(text="Installation complete!"))
+            
+            # Installation complete
+            self.root.after(0, self.installation_complete)
+            
+        except Exception as e:
+            error_message = str(e)
+            self.root.after(0, lambda: self.installation_failed(error_message))
+    
     def get_embedded_app_data(self):
-        """Get embedded application data. This will be replaced by build script."""
-        # This method will be replaced by the installer creation script
-        # with actual embedded file data
+        """Get embedded application data. Override this method in build scripts."""
+        # This is a placeholder - the actual build script should replace this method
         return {
             'lookaway': 'embedded_app_data_placeholder',
             'config/settings.json': '{}',
-            'README.md': 'LookAway Eye Break Reminder',
             'LICENSE': self.get_license_text()
         }
     
-    def log_status(self, message):
-        """Log status message to the status text widget."""
-        if hasattr(self, 'status_text'):
-            self.status_text.config(state='normal')
-            self.status_text.insert(tk.END, f"{message}\n")
-            self.status_text.config(state='disabled')
-            self.status_text.see(tk.END)
-            self.root.update()
-    
-    def perform_installation(self):
-        """Perform the actual installation."""
-        try:
-            self.log_status("Starting installation...")
-            self.progress_var.set(10)
-            
-            # Create installation directory
-            install_path = Path(self.install_dir)
-            self.log_status(f"Creating installation directory: {install_path}")
-            install_path.mkdir(parents=True, exist_ok=True)
-            self.progress_var.set(20)
-            
-            # Extract and install files
-            self.log_status("Extracting application files...")
-            embedded_data = self.get_embedded_app_data()
-            
-            for filename, data in embedded_data.items():
-                file_path = install_path / filename
-                file_path.parent.mkdir(parents=True, exist_ok=True)
-                
-                self.log_status(f"Installing: {filename}")
-                
-                if filename == 'lookaway':
-                    # Main executable - decode and decompress
-                    try:
-                        compressed_data = base64.b64decode(data.encode('ascii'))
-                        exe_data = gzip.decompress(compressed_data)
-                        
-                        with open(file_path, 'wb') as f:
-                            f.write(exe_data)
-                        
-                        # Make executable
-                        file_path.chmod(file_path.stat().st_mode | stat.S_IEXEC)
-                        
-                    except Exception as e:
-                        self.log_status(f"Error installing {filename}: {e}")
-                        raise
-                else:
-                    # Text files
-                    with open(file_path, 'w', encoding='utf-8') as f:
-                        f.write(data)
-            
-            self.progress_var.set(60)
-            
-            # Create configuration
-            self.log_status("Creating configuration...")
-            self.create_configuration()
-            self.progress_var.set(70)
-            
-            # Create desktop integration
-            if self.desktop_entry_enabled.get():
-                self.log_status("Creating desktop entry...")
-                self.create_desktop_entry()
-            self.progress_var.set(80)
-            
-            # Create autostart entry
-            if self.autostart_enabled.get():
-                self.log_status("Setting up autostart...")
-                self.create_autostart_entry()
-            self.progress_var.set(90)
-            
-            # Create uninstaller
-            self.log_status("Creating uninstaller...")
-            self.create_uninstaller()
-            
-            self.progress_var.set(100)
-            self.log_status("Installation completed successfully!")
-            
-            # Enable next button
-            self.next_button.config(state='normal')
-            
-        except Exception as e:
-            self.log_status(f"Installation failed: {e}")
-            messagebox.showerror("Installation Error", f"Installation failed:\n{str(e)}")
-            self.back_button.config(state='normal')
-    
-    def create_configuration(self):
-        """Create application configuration."""
-        config = {
-            "reminder_interval_minutes": int(self.interval_var.get() or "20"),
-            "notifications": {
-                "desktop": self.desktop_enabled.get(),
-                "email": self.email_enabled.get(),
-                "telegram": self.telegram_enabled.get()
-            },
-            "sleep_hours": {
-                "start": self.sleep_start_var.get() or "23:00",
-                "end": self.sleep_end_var.get() or "07:00"
-            },
-            "messages": [
-                "Time for a break! Look away from your screen for 20 seconds.",
-                "Take a moment to rest your eyes. Look at something 20 feet away.",
-                "Eye break time! Blink several times and look into the distance.",
-                "Give your eyes a rest. Focus on something far away for a moment.",
-                "Break time! Close your eyes for a few seconds or look outside."
-            ],
-            "break_types": {
-                "quick_break": {
-                    "duration_seconds": 20,
-                    "description": "Quick eye rest - look away for 20 seconds"
-                },
-                "long_break": {
-                    "duration_seconds": 300,
-                    "description": "Long break - step away from computer for 5 minutes"
-                }
-            },
+    def create_config_files(self, install_dir):
+        """Create application configuration files"""
+        config_dir = install_dir / "config"
+        config_dir.mkdir(exist_ok=True)
+        
+        # Create settings
+        settings = {
+            "reminder_interval_minutes": self.config['reminder_interval'],
+            "break_duration": 20,
             "long_break_interval": 3,
+            "long_break_duration": 300,
+            "sleep_hours": {
+                "start": self.config['sleep_start'],
+                "end": self.config['sleep_end']
+            },
+            "notifications": {
+                "desktop": True,
+                "email": self.config['email_enabled'],
+                "telegram": self.config['telegram_enabled']
+            },
             "snooze_minutes": 5,
-            "do_not_disturb": False,
-            "first_run": False
+            "logging": {
+                "level": "INFO",
+                "max_log_files": 5,
+                "max_file_size_mb": 10
+            }
         }
         
-        # Email settings
-        if self.email_enabled.get():
-            config["email_settings"] = {
-                "smtp_server": self.smtp_server_var.get().strip(),
-                "smtp_port": int(self.smtp_port_var.get().strip()),
-                "email": self.email_address_var.get().strip(),
-                "password": self.email_password_var.get().strip(),
-                "recipient": self.email_recipient_var.get().strip() or self.email_address_var.get().strip()
-            }
-        else:
-            config["email_settings"] = {
-                "smtp_server": "",
-                "smtp_port": 587,
-                "email": "",
-                "password": "",
-                "recipient": ""
-            }
+        # Add email configuration if enabled
+        if self.config['email_enabled'] and 'email_settings' in self.config:
+            settings["email"] = self.config['email_settings']
         
-        # Telegram settings
-        if self.telegram_enabled.get():
-            config["telegram_settings"] = {
-                "bot_token": self.telegram_token_var.get().strip(),
-                "chat_id": self.telegram_chat_var.get().strip()
-            }
-        else:
-            config["telegram_settings"] = {
-                "bot_token": "",
-                "chat_id": ""
-            }
+        # Add telegram configuration if enabled
+        if self.config['telegram_enabled'] and 'telegram_settings' in self.config:
+            settings["telegram"] = self.config['telegram_settings']
         
-        # Save configuration
-        config_dir = Path.home() / ".config" / "LookAway"
-        config_dir.mkdir(parents=True, exist_ok=True)
-        
-        config_file = config_dir / "settings.json"
-        with open(config_file, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=4)
+        # Write settings file
+        settings_file = config_dir / "settings.json"
+        with open(settings_file, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, indent=2)
     
-    def create_desktop_entry(self):
-        """Create desktop entry for application menu."""
+    def create_desktop_shortcut(self, install_dir):
+        """Create desktop shortcut"""
+        desktop_dir = Path.home() / "Desktop"
+        if not desktop_dir.exists():
+            return
+        
         desktop_entry = f"""[Desktop Entry]
+Version=1.0
+Type=Application
 Name=LookAway
 Comment=Eye Break Reminder
-Exec={self.install_dir}/lookaway
-Icon={self.install_dir}/icon.png
+Exec={install_dir}/lookaway
+Icon={install_dir}/lookaway.png
+Path={install_dir}
 Terminal=false
-Type=Application
+StartupNotify=true
 Categories=Utility;Health;
-StartupWMClass=lookaway
 """
         
-        # Create desktop entry directory
-        desktop_dir = Path.home() / ".local" / "share" / "applications"
-        desktop_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Write desktop entry
         desktop_file = desktop_dir / "lookaway.desktop"
         with open(desktop_file, 'w', encoding='utf-8') as f:
             f.write(desktop_entry)
@@ -1034,25 +850,51 @@ StartupWMClass=lookaway
         # Make executable
         desktop_file.chmod(0o755)
     
-    def create_autostart_entry(self):
-        """Create autostart entry."""
-        autostart_entry = f"""[Desktop Entry]
+    def create_application_menu_entry(self, install_dir):
+        """Create application menu entry"""
+        apps_dir = Path.home() / ".local" / "share" / "applications"
+        apps_dir.mkdir(parents=True, exist_ok=True)
+        
+        desktop_entry = f"""[Desktop Entry]
+Version=1.0
+Type=Application
 Name=LookAway
 Comment=Eye Break Reminder
-Exec={self.install_dir}/lookaway
-Icon={self.install_dir}/icon.png
+Exec={install_dir}/lookaway
+Icon={install_dir}/lookaway.png
+Path={install_dir}
 Terminal=false
+StartupNotify=true
+Categories=Utility;Health;
+"""
+        
+        desktop_file = apps_dir / "lookaway.desktop"
+        with open(desktop_file, 'w', encoding='utf-8') as f:
+            f.write(desktop_entry)
+        
+        # Make executable
+        desktop_file.chmod(0o755)
+    
+    def create_autostart_entry(self, install_dir):
+        """Create autostart entry"""
+        autostart_dir = Path.home() / ".config" / "autostart"
+        autostart_dir.mkdir(parents=True, exist_ok=True)
+        
+        autostart_entry = f"""[Desktop Entry]
+Version=1.0
 Type=Application
+Name=LookAway
+Comment=Eye Break Reminder
+Exec={install_dir}/lookaway
+Icon={install_dir}/lookaway.png
+Path={install_dir}
+Terminal=false
+StartupNotify=false
 X-GNOME-Autostart-enabled=true
 Hidden=false
 NoDisplay=false
 """
         
-        # Create autostart directory
-        autostart_dir = Path.home() / ".config" / "autostart"
-        autostart_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Write autostart entry
         autostart_file = autostart_dir / "lookaway.desktop"
         with open(autostart_file, 'w', encoding='utf-8') as f:
             f.write(autostart_entry)
@@ -1060,8 +902,8 @@ NoDisplay=false
         # Make executable
         autostart_file.chmod(0o755)
     
-    def create_uninstaller(self):
-        """Create uninstaller script."""
+    def create_uninstaller(self, install_dir):
+        """Create uninstaller script"""
         uninstaller_script = f"""#!/bin/bash
 # LookAway Uninstaller
 
@@ -1071,76 +913,96 @@ echo "Uninstalling LookAway..."
 pkill -f lookaway
 
 # Remove installation directory
-rm -rf "{self.install_dir}"
+rm -rf "{install_dir}"
 
 # Remove desktop entry
+rm -f ~/Desktop/lookaway.desktop
+
+# Remove application menu entry
 rm -f ~/.local/share/applications/lookaway.desktop
 
 # Remove autostart entry
 rm -f ~/.config/autostart/lookaway.desktop
 
-# Ask about configuration
-read -p "Remove configuration files? [y/N]: " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    rm -rf ~/.config/LookAway
-    echo "Configuration files removed."
-else
-    echo "Configuration files kept."
-fi
-
 echo "LookAway has been uninstalled."
 """
         
-        uninstaller_path = Path(self.install_dir) / "uninstall.sh"
+        uninstaller_path = install_dir / "uninstall.sh"
         with open(uninstaller_path, 'w', encoding='utf-8') as f:
             f.write(uninstaller_script)
         
         # Make executable
         uninstaller_path.chmod(0o755)
     
-    def launch_application(self):
-        """Launch the installed application."""
-        try:
-            app_path = Path(self.install_dir) / "lookaway"
-            subprocess.Popen([str(app_path)], cwd=self.install_dir)
-            messagebox.showinfo("Launch", "LookAway has been launched!")
-        except Exception as e:
-            messagebox.showerror("Launch Error", f"Failed to launch application:\n{str(e)}")
+    def installation_complete(self):
+        """Called when installation is complete"""
+        self.install_progress_bar.stop()
+        self.current_step += 1
+        self.update_progress()
+        self.show_current_step()
     
-    def open_install_dir(self):
-        """Open installation directory in file manager."""
-        try:
-            subprocess.run(["xdg-open", self.install_dir])
-        except Exception:
-            # Fallback for systems without xdg-open
-            try:
-                subprocess.run(["nautilus", self.install_dir])
-            except Exception:
-                try:
-                    subprocess.run(["dolphin", self.install_dir])
-                except Exception:
-                    messagebox.showinfo("Directory", f"Installation directory:\n{self.install_dir}")
+    def installation_failed(self, error_message):
+        """Called when installation fails"""
+        self.install_progress_bar.stop()
+        messagebox.showerror("Installation Failed", f"Installation failed: {error_message}")
+        self.next_btn.config(state='normal', text="Retry", command=self.start_installation)
+        self.back_btn.config(state='normal')
+        self.cancel_btn.config(state='normal')
     
-    def cancel_installation(self):
-        """Cancel installation and exit."""
-        if messagebox.askyesno("Cancel Installation", "Are you sure you want to cancel the installation?"):
-            self.root.quit()
+    def create_completion_page(self):
+        """Installation completion page"""
+        print("DEBUG: Creating completion page")
+        completion_frame = ttk.Frame(self.main_frame)
+        completion_frame.pack(fill=tk.BOTH, expand=True)
+        
+        title_label = ttk.Label(completion_frame, text="Installation Complete!", 
+                               font=('Arial', 16, 'bold'))
+        title_label.pack(pady=(0, 20))
+        
+        success_text = f"""LookAway has been successfully installed!
+
+Installation location: {self.config['install_path']}
+
+You can now:
+• Launch LookAway to start protecting your eyes
+• Configure additional settings in the application
+• Access LookAway from your desktop or application menu
+
+Thank you for choosing LookAway!"""
+        
+        success_label = ttk.Label(completion_frame, text=success_text, justify='left')
+        success_label.pack(pady=20)
+        
+        # Launch option
+        if hasattr(self, 'launch_after_var'):
+            launch_frame = ttk.Frame(completion_frame)
+            launch_frame.pack(pady=(20, 0))
+            
+            launch_check = ttk.Checkbutton(launch_frame, text="Launch LookAway now", 
+                                          variable=self.launch_after_var)
+            launch_check.pack()
     
     def finish_installation(self):
-        """Finish installation and exit."""
+        """Finish installation and exit"""
+        if hasattr(self, 'launch_after_var') and self.launch_after_var.get():
+            self.launch_application()
         self.root.quit()
     
-    def run(self):
-        """Run the installer."""
+    def launch_application(self):
+        """Launch the application after installation"""
         try:
-            self.root.mainloop()
-        except KeyboardInterrupt:
-            pass
+            app_path = Path(self.config['install_path']) / "lookaway"
+            subprocess.Popen([str(app_path)], cwd=self.config['install_path'])
+        except Exception as e:
+            messagebox.showwarning("Launch Failed", f"Could not launch LookAway: {e}")
+    
+    def run(self):
+        """Run the installer"""
+        self.root.mainloop()
 
 
 def main():
-    """Main entry point."""
+    """Main entry point"""
     # Check if running on Linux
     if not sys.platform.startswith('linux'):
         print("This installer is designed for Linux systems.")
@@ -1159,7 +1021,7 @@ def main():
         sys.exit(1)
     
     # Run installer
-    installer = LinuxLookAwayInstaller()
+    installer = LinuxInstallerWizard()
     installer.run()
 
 
