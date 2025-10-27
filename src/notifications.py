@@ -140,10 +140,7 @@ class TelegramNotificationHandler(NotificationHandler):
     def __init__(self, config: Dict[str, Any]):
         self.bot_token = config.get('bot_token', '')
         self.chat_id = config.get('chat_id', '')
-        self.bot = None
-        
-        if TELEGRAM_AVAILABLE and self.bot_token:
-            self.bot = Bot(token=self.bot_token)
+        # Don't create a persistent bot instance to avoid event loop conflicts
     
     def send_notification(self, title: str, message: str) -> bool:
         """Send a Telegram notification."""
@@ -158,18 +155,12 @@ class TelegramNotificationHandler(NotificationHandler):
                 logger.error(f"Telegram configuration incomplete - bot_token: {'SET' if self.bot_token else 'MISSING'}, chat_id: {'SET' if self.chat_id else 'MISSING'}")
                 return False
             
-            if not self.bot:
-                logger.error("Telegram bot not initialized")
-                return False
-            
-            logger.info(f"Telegram attempting to send message to chat_id: {self.chat_id}")
+            logger.debug(f"Telegram attempting to send message to chat_id: {self.chat_id}")
             
             try:
                 full_message = f"🔔 *{title}*\n\n{message}\n\n_Take care of your eyes!_ 👀"
                 
-                # Improved asyncio handling for .exe environment
-                
-                # Use a more isolated approach for .exe compatibility
+                # Use completely isolated approach for .exe compatibility
                 import threading
                 import queue
                 
@@ -177,7 +168,7 @@ class TelegramNotificationHandler(NotificationHandler):
                 exception_queue = queue.Queue()
                 
                 def telegram_thread():
-                    """Run Telegram operation in separate thread with its own event loop."""
+                    """Run Telegram operation in separate thread with completely isolated resources."""
                     try:
                         logger.debug("Telegram thread started")
                         
@@ -187,24 +178,32 @@ class TelegramNotificationHandler(NotificationHandler):
                         
                         logger.debug("Telegram thread event loop created")
                         
+                        # Create a fresh Bot instance for this thread/loop
+                        # This ensures no connection reuse from previous loops
+                        thread_bot = Bot(token=self.bot_token)
+                        
                         try:
-                            logger.info(f"Telegram sending message: {full_message[:100]}...")
+                            logger.debug(f"Telegram sending message: {full_message[:100]}...")
                             
-                            # Send the message in the new loop
+                            # Send the message with the fresh bot instance
                             result = new_loop.run_until_complete(
-                                self.bot.send_message(
+                                thread_bot.send_message(
                                     chat_id=self.chat_id,
                                     text=full_message,
                                     parse_mode='Markdown'
                                 )
                             )
                             
-                            logger.info(f"Telegram message sent successfully, result: {result}")
+                            logger.debug(f"Telegram message sent successfully, result: {result}")
                             result_queue.put(True)
                             
                         finally:
-                            # Properly close the loop and all its resources
+                            # Properly close bot and loop resources
                             try:
+                                # Close the bot's HTTP client first
+                                if hasattr(thread_bot, '_request') and hasattr(thread_bot._request, '_client'):
+                                    new_loop.run_until_complete(thread_bot._request._client.aclose())
+                                
                                 # Cancel all running tasks
                                 pending = asyncio.all_tasks(new_loop)
                                 if pending:
@@ -218,9 +217,10 @@ class TelegramNotificationHandler(NotificationHandler):
                                 # Close the loop
                                 new_loop.close()
                             except Exception as cleanup_error:
-                                pass  # Ignore cleanup errors
+                                logger.debug(f"Cleanup error (non-critical): {cleanup_error}")
                             
                     except Exception as thread_error:
+                        logger.error(f"Telegram thread error: {thread_error}")
                         exception_queue.put(thread_error)
                         result_queue.put(False)
                 
@@ -265,6 +265,10 @@ class TelegramNotificationHandler(NotificationHandler):
     def test_connection(self) -> bool:
         """Test Telegram configuration."""
         if not TELEGRAM_AVAILABLE:
+            logger.error("Telegram library not available for testing")
+            return False
+        if not all([self.bot_token, self.chat_id]):
+            logger.error("Telegram configuration incomplete for testing")
             return False
         return self.send_notification("Test Notification", "Telegram notifications are working correctly!")
 
