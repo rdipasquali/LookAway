@@ -53,6 +53,8 @@ class EyeBreakScheduler:
             return
         
         self.is_running = True
+        # Set the last reminder time to now so the first reminder happens after the full interval
+        self.last_reminder_time = datetime.now()
         self.scheduler_thread = threading.Thread(target=self._run_scheduler, daemon=True)
         self.scheduler_thread.start()
         self.logger.info("Eye break scheduler started")
@@ -136,8 +138,10 @@ class EyeBreakScheduler:
         now = datetime.now()
         interval_seconds = self.config.get('reminder_interval_minutes', 20) * 60
         
+        # If last_reminder_time is None (shouldn't happen after start() but defensive coding)
         if self.last_reminder_time is None:
-            return True
+            self.last_reminder_time = now
+            return False  # Don't send immediate reminder on first check
         
         time_since_last = (now - self.last_reminder_time).total_seconds()
         return time_since_last >= interval_seconds
